@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestão de Ocorrências Abertas</title>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, query, deleteDoc, doc, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+        // Global variables for Firebase
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app, db, auth;
+        window.db = null;
+        window.userId = null;
+        window.deleteDoc = deleteDoc;
+        window.doc = doc;
+        
+        let allOcorrencias = []; 
+        let abertasOcorrencias = []; // Armazena apenas as ocorrências abertas
+
+        async function initializeFirebase() {
+            if (!firebaseConfig) {
+                console.error("Firebase config is missing.");
+                return;
+            }
+            try {
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+                window.db = db;
+
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                window.userId = auth.currentUser?.uid || 'anonymous-user';
+                console.log("Firebase e autenticação inicializados. User ID:", window.userId);
+
+                iniciarEscutaOcorrencias(); 
+
+            } catch (error) {
+                console.error("Erro ao inicializar Firebase ou autenticar:", error);
+            }
+        }
+        initializeFirebase();
+
+        function iniciarEscutaOcorrencias() {
+            if (!window.db || !window.userId) {
+                console.warn("DB ou User ID não prontos para iniciar a escuta.");
+                return;
+            }
+
+            const collectionPath = `/artifacts/${appId}/users/${window.userId}/ocorrencias`;
+            const ocorrenciasCollection = collection(window.db, collectionPath);
+            const q = query(ocorrenciasCollection);
+
+            onSnapshot(q, (snapshot) => {
+                const ocorrencias = [];
+                snapshot.forEach(doc => {
+                    ocorrencias.push({ id: doc.id, ...doc.data() });
+                });
+                
+                ocorrencias.sort((a, b) => {
+                    const dateA = b.data_registro && b.data_registro.seconds || 0;
+                    const dateB = a.data_registro && a.data_registro.seconds || 0;
+                    return dateA - dateB;
+                });
+                
+                allOcorrencias = ocorrencias; 
+                
+                // Filtra apenas as ocorrências abertas
+                abertasOcorrencias = allOcorrencias.filter(isAberta);
+                
+                preencherFiltrosEstaticos(abertasOcorrencias); 
+                aplicarFiltros(); 
+                
+            }, (error) => {
+                console.error("Erro ao escutar ocorrências:", error);
+                mostrarMensagem('Erro ao carregar lista de ocorrências: ' + error.message, 'danger');
+            });
+        }
+        
+        function isFinalizada(o) {
+            const atendProf = o.data_atendimento_professor && o.data_atendimento_professor.seconds;
+            const atendTutor = o.solicitado_tutor ? (o.data_atendimento_tutor && o.data_atendimento_tutor.seconds) : true;
+            const atendCoord = o.solicitado_coordenacao ? (o.data_atendimento_coordenacao && o.data_atendimento_coordenacao.seconds) : true;
+            const atendGestao = o.solicitado_gestao ? (o.data_atendimento_gestao && o.data_atendimento_gestao.seconds) : true;
+            
+            return atendProf && atendTutor && atendCoord && atendGestao;
+        }
+        
+        function isAberta(o) {
+            return !isFinalizada(o);
+        }
+
+        // Preenche os filtros Sala e Tutor com base nas ocorrências abertas
+        function preencherFiltrosEstaticos(ocorrencias) {
+            const filterTutorSelect = document.getElementById('filter-tutor');
+            const filterSalaSelect = document.getElementById('filter-sala');
+            
+            // --- 1. Filtro de Tutor (TODOS os tutores que tiveram ocorrência aberta) ---
+            const selectedTutor = filterTutorSelect.value; 
+            filterTutorSelect.innerHTML = '<option value="">TODOS OS TUTORES</option>'; 
+            const todosTutores = new Set();
+            
+            ocorrencias.forEach(o => {
+                if (o.tutor && o.tutor !== 'Tutor Não Definido' && o.tutor !== '') {
+                    todosTutores.add(o.tutor);
+                }
+            });
+            Array.from(todosTutores).sort().forEach(tutor => {
+                const option = document.createElement('option');
+                option.value = tutor;
+                option.textContent = tutor;
+                filterTutorSelect.appendChild(option);
+            });
+            if (selectedTutor && filterTutorSelect.querySelector(`option[value="${selectedTutor}"]`)) {
+                filterTutorSelect.value = selectedTutor;
+            }
+            
+            // --- 2. Filtro de Sala (Todas as salas que tiveram ocorrência aberta) ---
+            const selectedSala = filterSalaSelect.value;
+            filterSalaSelect.innerHTML = '<option value="">TODAS AS SALAS</option>';
+            const salas = new Set();
+            ocorrencias.forEach(o => { 
+                if (o.sala && o.sala !== '') {
+                    salas.add(o.sala);
+                }
+            });
+            Array.from(salas).sort().forEach(sala => {
+                const option = document.createElement('option');
+                option.value = sala;
+                option.textContent = sala;
+                filterSalaSelect.appendChild(option);
+            });
+            if (selectedSala && filterSalaSelect.querySelector(`option[value="${selectedSala}"]`)) {
+                filterSalaSelect.value = selectedSala;
+            }
+        }
+        
+        // Lógica principal de aplicação dos filtros
+        window.aplicarFiltros = function() {
+            const filterTutor = document.getElementById('filter-tutor').value;
+            const filterSala = document.getElementById('filter-sala').value;
+            const filterPendencia = document.getElementById('filter-pendencia').value;
+            
+            let filteredOcorrencias = abertasOcorrencias;
+
+            // 1. Filtro de Sala
+            if (filterSala) {
+                filteredOcorrencias = filteredOcorrencias.filter(o => o.sala === filterSala);
+            }
+
+            // 2. Filtro de Tutor
+            if (filterTutor) {
+                filteredOcorrencias = filteredOcorrencias.filter(o => o.tutor === filterTutor);
+            }
+            
+            // 3. Filtro de Pendência
+            if (filterPendencia) {
+                filteredOcorrencias = filteredOcorrencias.filter(o => {
+                    switch(filterPendencia) {
+                        case 'tutor':
+                            return o.solicitado_tutor;
+                        case 'coord':
+                            return o.solicitado_coordenacao;
+                        case 'gestao':
+                            return o.solicitado_gestao;
+                        case 'prof_pendente':
+                            // Considera pendente se o atendimento do professor ainda não foi feito
+                            return !o.data_atendimento_professor || !o.data_atendimento_professor.seconds;
+                        default:
+                            return true; 
+                    }
+                });
+            }
+            
+            renderizarTabela(filteredOcorrencias); 
+        }
+        
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Configuração personalizada do Tailwind
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'dark-primary': '#0F172A', 
+                        'dark-secondary': '#1E293B', 
+                        'accent': '#10B981', 
+                        'text-light': '#F8FAFC', 
+                        'input-bg': '#374151', 
+                        'danger': '#DC2626', 
+                        'success': '#10B981', 
+                        'warning': '#F59E0B',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+
+        let idOcorrenciaParaExcluir = null;
+
+        function formatarData(timestamp) {
+            if (!timestamp || !timestamp.seconds) return '';
+            const date = new Date(timestamp.seconds * 1000);
+            return date.toLocaleDateString('pt-BR');
+        }
+        
+        function mostrarMensagem(texto, tipo) {
+            const msgElement = document.getElementById('mensagem-status');
+            msgElement.textContent = texto;
+            
+            msgElement.classList.remove('hidden', 'bg-success', 'bg-danger', 'bg-warning');
+
+            if (tipo === 'success') {
+                msgElement.classList.add('bg-success');
+            } else if (tipo === 'danger') {
+                msgElement.classList.add('bg-danger');
+            } else if (tipo === 'warning') {
+                msgElement.classList.add('bg-warning');
+            }
+
+            msgElement.classList.remove('hidden');
+            setTimeout(() => {
+                msgElement.classList.add('hidden');
+            }, 5000);
+        }
+        
+        function abrirModalSenha(ocorrenciaId, tipoAcesso) {
+            const modal = document.getElementById('modal-overlay');
+            const inputSenha = document.getElementById('input-senha');
+            
+            inputSenha.setAttribute('data-id', ocorrenciaId);
+            inputSenha.setAttribute('data-type', tipoAcesso); // 'edicao_completa', 'atendimento_tutor', 'atendimento_coordenacao', 'atendimento_gestao'
+            
+            document.getElementById('modal-titulo').textContent = 'Acesso Restrito';
+            document.getElementById('modal-texto').textContent = 'Para acessar a edição completa (Lápis) ou forçar o atendimento de outro nível, insira a senha de gestão:';
+            
+            modal.classList.remove('hidden');
+            document.getElementById('input-senha').focus();
+        }
+        
+        function validarSenha(event) {
+            event.preventDefault();
+            const inputSenha = document.getElementById('input-senha');
+            const senhaDigitada = inputSenha.value;
+            const id = inputSenha.getAttribute('data-id');
+            const tipo = inputSenha.getAttribute('data-type'); 
+            
+            const senhaCorreta = window.userId; // Usando userId como senha de gestão (temporário)
+
+            if (senhaDigitada === senhaCorreta) {
+                
+                let url = `edicao_ocorrencia.html?id=${id}`;
+                if (tipo === 'edicao_completa') {
+                    url += `&modo=editar&tipo=ocorrencia`; 
+                } else if (tipo.startsWith('atendimento_')) {
+                    const modoAtendimento = tipo.replace('atendimento_', 'atendimento_');
+                    url += `&modo=${modoAtendimento}&tipo=ocorrencia`;
+                } else {
+                     mostrarMensagem('Erro: Tipo de acesso desconhecido.', 'danger');
+                     return;
+                }
+                window.location.href = url;
+            } else {
+                mostrarMensagem('Senha incorreta. Tente novamente.', 'danger');
+            }
+            
+            inputSenha.value = '';
+            document.getElementById('modal-overlay').classList.add('hidden');
+        }
+
+        function confirmarExclusao(id) {
+            idOcorrenciaParaExcluir = id;
+            document.getElementById('modal-exclusao-overlay').classList.remove('hidden');
+        }
+
+        async function excluirOcorrencia() {
+            document.getElementById('modal-exclusao-overlay').classList.add('hidden');
+            if (!idOcorrenciaParaExcluir || !window.db || !window.userId) return;
+
+            try {
+                const docRef = window.doc(window.db, `/artifacts/${appId}/users/${window.userId}/ocorrencias`, idOcorrenciaParaExcluir);
+                await window.deleteDoc(docRef);
+                mostrarMensagem('Ocorrência excluída com sucesso!', 'success');
+            } catch (error) {
+                console.error("Erro ao excluir ocorrência:", error);
+                mostrarMensagem('Erro ao excluir ocorrência: ' + error.message, 'danger');
+            } finally {
+                idOcorrenciaParaExcluir = null;
+            }
+        }
+        
+        // **Função para renderizar S ou N (Revisada)**
+        function renderSolicitacaoStatus(isSolicitado, id, tipo) {
+            const statusText = isSolicitado ? 'S' : 'N';
+            const statusClass = isSolicitado 
+                ? 'bg-accent/50 text-accent font-bold' 
+                : 'bg-gray-600/50 text-gray-400 font-medium';
+                
+            const modo = `atendimento_${tipo}`;
+            
+            // Se for solicitado (S), gera um link para o atendimento direto (sem senha, assumindo que o usuário tem permissão para o seu nível)
+            if (isSolicitado) {
+                 return `<a href="edicao_ocorrencia.html?id=${id}&modo=${modo}&tipo=ocorrencia" 
+                            class="px-2 py-0.5 text-xs rounded-full ${statusClass} inline-block transition duration-150 hover:opacity-80"
+                            title="Atendimento Pendente: Clique para atender.">
+                            ${statusText}
+                        </a>`;
+            } else {
+                // Se for 'N', retorna apenas o texto com cor
+                return `<span class="px-2 py-0.5 text-xs rounded-full ${statusClass} inline-block"
+                            title="Atendimento Não Solicitado.">
+                            ${statusText}
+                        </span>`;
+            }
+        }
+        
+        // **Função renderizarTabela (Revisada)**
+        function renderizarTabela(ocorrencias) {
+            const tbody = document.getElementById('tabela-ocorrencias');
+            if (!tbody) return;
+            
+            let html = '';
+            if (ocorrencias.length === 0) {
+                html = `<tr><td colspan="9" class="text-center py-4 text-gray-400">Nenhuma ocorrência aberta encontrada para os filtros aplicados.</td></tr>`;
+            } else {
+                ocorrencias.forEach(ocorrencia => {
+                    const statusClass = !ocorrencia.data_atendimento_professor || !ocorrencia.data_atendimento_professor.seconds 
+                        ? 'bg-danger/50 text-danger' 
+                        : 'bg-warning/50 text-warning';
+                    
+                    const statusText = !ocorrencia.data_atendimento_professor || !ocorrencia.data_atendimento_professor.seconds
+                        ? 'PENDENTE PROFESSOR'
+                        : 'AGUARDANDO NÍVEL SUPERIOR';
+                        
+                    // Se algum dos superiores foi solicitado e ainda não atendido
+                    if (ocorrencia.solicitado_tutor || ocorrencia.solicitado_coordenacao || ocorrencia.solicitado_gestao) {
+                        if (ocorrencia.solicitado_tutor && (!ocorrencia.data_atendimento_tutor || !ocorrencia.data_atendimento_tutor.seconds)) {
+                            statusText = 'PENDENTE TUTOR';
+                            statusClass = 'bg-danger/50 text-danger';
+                        } else if (ocorrencia.solicitado_coordenacao && (!ocorrencia.data_atendimento_coordenacao || !ocorrencia.data_atendimento_coordenacao.seconds)) {
+                            statusText = 'PENDENTE COORDENAÇÃO';
+                            statusClass = 'bg-danger/50 text-danger';
+                        } else if (ocorrencia.solicitado_gestao && (!ocorrencia.data_atendimento_gestao || !ocorrencia.data_atendimento_gestao.seconds)) {
+                            statusText = 'PENDENTE GESTÃO';
+                            statusClass = 'bg-danger/50 text-danger';
+                        } else if (!isFinalizada(ocorrencia)) {
+                            statusText = 'AGUARDANDO NÍVEL SUPERIOR';
+                            statusClass = 'bg-warning/50 text-warning';
+                        }
+                    }
+
+                    
+                    html += `<tr class="hover:bg-dark-secondary/50 transition duration-150" data-id="${ocorrencia.id}">
+                        <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-sm font-medium">${ocorrencia.id.substring(0, 8)}</td>
+                        <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-sm">${formatarData(ocorrencia.data_registro)}</td>
+                        <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-sm">${ocorrencia.aluno}</td>
+                        <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm">${ocorrencia.sala}</td>
+                        
+                        <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm">
+                            ${renderSolicitacaoStatus(ocorrencia.solicitado_tutor, ocorrencia.id, 'tutor')}
+                        </td>
+                        <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm">
+                             ${renderSolicitacaoStatus(ocorrencia.solicitado_coordenacao, ocorrencia.id, 'coordenacao')}
+                        </td>
+                        <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm">
+                            ${renderSolicitacaoStatus(ocorrencia.solicitado_gestao, ocorrencia.id, 'gestao')}
+                        </td>
+
+                        <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm">
+                            <span class="px-3 py-1 text-xs font-semibold rounded-full ${statusClass}">
+                                ${statusText}
+                            </span>
+                        </td>
+
+                        <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm font-medium">
+                            <a href="edicao_ocorrencia.html?id=${ocorrencia.id}&modo=visualizar&tipo=ocorrencia" 
+                               class="text-blue-400 hover:text-blue-300 transition duration-150 inline-block p-1"
+                               title="Visualização Completa">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                            </a>
+                            
+                            <a href="#" onclick="abrirModalSenha('${ocorrencia.id}', 'edicao_completa')" 
+                               class="text-yellow-500 hover:text-yellow-400 transition duration-150 inline-block p-1 ml-2"
+                               title="Edição Completa (Acesso Gestão)">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                            </a>
+
+                            <button onclick="confirmarExclusao('${ocorrencia.id}')" 
+                                    class="text-red-500 hover:text-red-400 transition duration-150 inline-block p-1 ml-2"
+                                    title="Excluir Ocorrência">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            </button>
+                        </td>
+                    </tr>`;
+                });
+            }
+            
+            tbody.innerHTML = html;
+        }
+
+    </script>
+    <style>
+        .form-input {
+            width: 100%;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            background-color: #374151; 
+            color: #f3f4f6;
+            border: 1px solid #4b5563;
+        }
+    </style>
+</head>
+<body class="bg-dark-primary font-sans text-text-light">
+    
+    <div id="app-container" class="flex flex-col items-center justify-between p-4 md:p-8 min-h-screen">
+
+        <header class="w-full text-center mb-8 mt-4">
+            <h1 class="text-3xl sm:text-4xl font-extrabold text-danger leading-tight tracking-wider">
+                OCORRÊNCIAS ABERTAS
+            </h1>
+            <h2 class="text-xl sm:text-2xl text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
+                Pendências de Atendimento
+            </h2>
+             <div class="mt-4 flex flex-wrap justify-center gap-4">
+                 <button type="button" onclick="window.location.href='/gestao_ocorrencia'"
+                        class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200 ease-in-out flex items-center justify-center space-x-2 w-full max-w-xs md:max-w-[150px]">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z"></path></svg>
+                    <span>Voltar</span>
+                </button>
+                 <button type="button" onclick="window.location.href='/gestao_ocorrencia_finalizadas'"
+                        class="bg-accent hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded-lg transition duration-200 ease-in-out flex items-center justify-center space-x-2 w-full max-w-xs md:max-w-[250px]">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    <span>Histórico Finalizado</span>
+                </button>
+            </div>
+        </header>
+
+        <div id="mensagem-status" class="hidden p-3 mb-4 text-sm font-medium text-white rounded-lg text-center w-full max-w-4xl" role="alert"></div>
+
+        <main class="w-full max-w-7xl flex-grow">
+            
+            <div class="filter-area bg-dark-secondary p-4 rounded-xl shadow-lg mb-4">
+                <h3 class="text-lg font-bold mb-3 text-accent">Filtros de Pendência</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    
+                    <div>
+                        <label for="filter-sala" class="block text-sm font-medium mb-1">Sala:</label>
+                        <select id="filter-sala" class="form-input" onchange="aplicarFiltros()">
+                            <option value="">TODAS AS SALAS</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label for="filter-tutor" class="block text-sm font-medium mb-1">Tutor:</label>
+                        <select id="filter-tutor" class="form-input" onchange="aplicarFiltros()">
+                            <option value="">TODOS OS TUTORES</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="filter-pendencia" class="block text-sm font-medium mb-1">Nível de Pendência:</label>
+                        <select id="filter-pendencia" class="form-input" onchange="aplicarFiltros()">
+                            <option value="">TODAS AS PENDÊNCIAS</option>
+                            <option value="prof_pendente">PENDENTE PROFESSOR</option>
+                            <option value="tutor">PENDENTE TUTOR</option>
+                            <option value="coord">PENDENTE COORDENAÇÃO</option>
+                            <option value="gestao">PENDENTE GESTÃO</option>
+                        </select>
+                    </div>
+
+                </div>
+            </div>
+            <div class="overflow-x-auto bg-dark-secondary rounded-xl shadow-2xl p-4">
+                <table class="min-w-full divide-y divide-gray-700">
+                    <thead class="bg-dark-primary">
+                        <tr>
+                            <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">ID</th>
+                            <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Data Reg.</th>
+                            <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Aluno</th>
+                            <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Sala</th>
+                            
+                            <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider" title="Solicitação de Atendimento do Tutor">Tutor</th>
+                            <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider" title="Solicitação de Atendimento da Coordenação">Coord.</th>
+                            <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider" title="Solicitação de Atendimento da Gestão">Gestão</th>
+                            
+                            <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
+                            
+                            <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabela-ocorrencias" class="divide-y divide-gray-800">
+                        <tr><td colspan="9" class="text-center py-4 text-gray-400">Carregando dados...</td></tr>
+                        </tbody>
+                </table>
+            </div>
+        </main>
+        
+        <div id="modal-exclusao-overlay" class="hidden fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center p-4">
+            <div class="bg-dark-secondary p-8 rounded-xl shadow-2xl w-full max-w-sm border border-danger">
+                <h3 class="text-xl font-bold mb-4 text-danger">Confirmação de Exclusão</h3>
+                <p class="mb-6 text-gray-300">Tem certeza que deseja excluir esta ocorrência? Esta ação é irreversível.</p>
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="document.getElementById('modal-exclusao-overlay').classList.add('hidden')"
+                            class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition">
+                        Cancelar
+                    </button>
+                    <button type="button" onclick="excluirOcorrencia()" 
+                            class="px-4 py-2 bg-danger text-white font-semibold rounded-lg hover:bg-red-700 transition">
+                        EXCLUIR
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="modal-overlay" class="hidden fixed inset-0 bg-black bg-opacity-70 z-40 flex justify-center items-center p-4">
+            <div class="bg-dark-secondary p-8 rounded-xl shadow-2xl w-full max-w-sm">
+                <h3 id="modal-titulo" class="text-xl font-bold mb-4 text-warning">Acesso Restrito</h3>
+                <p id="modal-texto" class="mb-6">Para acessar a edição ou atendimento, insira a senha de gestão (idrgestao):</p>
+                
+                <form id="senha-modal" onsubmit="validarSenha(event)">
+                    <input type="password" id="input-senha" placeholder="Senha de Gestão" required
+                           class="w-full form-input mb-4" data-id="" data-type="">
+                    <div class="flex justify-end space-x-3">
+                        <button type="button" onclick="document.getElementById('modal-overlay').classList.add('hidden')"
+                                class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition">
+                            Cancelar
+                        </button>
+                        <button type="submit" 
+                                class="px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-500 transition">
+                            Confirmar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+
+        <footer class="w-full text-center mt-10 p-4 text-gray-400 text-sm border-t border-gray-800">
+            <p class="mb-1 text-base font-medium">
+                DESENVOLVEDOR: MARCELO CARDES E LUIS FELIPE CARDES
+            </p>
+            <p class="text-xs font-light tracking-wide">
+                LICENCIADO COMO TESTE PARA E.E. PEI PROFESSORA IRENE DIAS
+            </p>
+        </footer>
+
+    </div>
+
+</body>
+</html>
