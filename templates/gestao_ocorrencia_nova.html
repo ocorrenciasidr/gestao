@@ -68,11 +68,11 @@
             if (!responseProfs.ok) throw new Error("Falha ao carregar Professores.");
             funcionariosDataGlobal = await responseProfs.json();
 
-            // 2. Fetch de Salas (CORRIGIDO com melhor tratamento de erro)
+            // 2. Fetch de Salas (IMPROVED ERROR HANDLING)
             const responseSalas = await fetch('/api/salas');
             
             if (!responseSalas.ok) {
-                // Read the detailed error message from the server (e.g., the Supabase 400 error description)
+                // Reads detailed error message from the server (e.g., the Supabase 400 error description)
                 const errorText = await responseSalas.text(); 
                 throw new Error("Falha ao carregar Salas. Status: " + responseSalas.status + ". Detalhe: " + errorText.substring(0, 150) + "..."); 
             }
@@ -103,12 +103,17 @@
             selectProfResp.insertAdjacentHTML('beforeend', `<option value="${prof.id}">${prof.nome}</option>`);
         });
         
-        // 2. Preencher Salas (CORRIGIDO: usando 'sala' em vez de 'nome_turma')
+        // 2. Preencher Salas (FIXED with safety check for 'sala' property)
         const selectSala = document.getElementById('sala');
         selectSala.innerHTML = '<option value="" disabled selected>Selecione a Sala</option>';
-        salas.sort((a, b) => a.sala.localeCompare(b.sala)).forEach(sala => {
-            // Usamos o ID da sala como value e sala.sala como texto
-            selectSala.insertAdjacentHTML('beforeend', `<option value="${sala.id}">${sala.sala}</option>`);
+        
+        // FIX: Added (a.sala || '') to prevent 'Cannot read properties of undefined' crash
+        salas.sort((a, b) => (a.sala || '').localeCompare(b.sala || '')).forEach(sala => {
+            // Check for valid data before adding option
+            if (sala.id && sala.sala) {
+                // Uses sala.id as value and sala.sala as text
+                selectSala.insertAdjacentHTML('beforeend', `<option value="${sala.id}">${sala.sala}</option>`);
+            }
         });
         
         // Força a atualização inicial
@@ -363,4 +368,5 @@
 </body>
 
 </html>
+
 
