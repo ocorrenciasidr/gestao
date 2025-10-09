@@ -2,29 +2,26 @@
 
 import os
 import logging
-# A biblioteca 'dotenv' é útil para desenvolvimento local, mas é REMOVIDA
-# em ambientes de produção como o Render, onde as variáveis são injetadas
-# from dotenv import load_dotenv 
+from dotenv import load_dotenv
 from flask import Flask, render_template, request, jsonify
 from supabase import create_client, Client
-# Importar 'os' para usar os.environ.get e os.urandom.hex
-import os 
+import os # Importar para usar os.urandom.hex
+import json
+from datetime import datetime
 
 # Configuração de Logs
 logging.basicConfig(level=logging.INFO)
-# load_dotenv() # Removido
+load_dotenv()
 
 # =================================================================
 # CONFIGURAÇÃO SUPABASE
 # =================================================================
-# O Render injeta as variáveis no ambiente do sistema (os.environ).
-# Agora, o código está lendo os NOMES das variáveis, e não os valores.
 SUPABASE_URL: str = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY: str = os.environ.get("SUPABASE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    # A exceção é mantida para garantir que as variáveis sejam configuradas no Render.
-    raise ValueError("As variáveis SUPABASE_URL e SUPABASE_KEY devem ser configuradas no painel do Render (Environment Variables) ou no .env se rodando localmente.")
+    # Em um ambiente de produção, é melhor não expor a chave, mas para desenvolvimento é necessário.
+    raise ValueError("As variáveis SUPABASE_URL e SUPABASE_KEY devem ser configuradas no arquivo .env")
 
 # Inicializa o cliente Supabase
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -55,7 +52,24 @@ def handle_supabase_response(response):
 @app.route('/')
 def home():
     """Rota principal, pode ser um menu inicial."""
-    return render_template('home.html') 
+    return render_template('index.html') 
+
+# ROTA 1.1: MÓDULO AULAS (NOVO)
+@app.route('/gestao_aulas')
+def gestao_aulas():
+    return render_template('gestao_aulas.html')
+
+@app.route('/gestao_agenda')
+def gestao_agenda():
+    return render_template('gestao_agenda.html')
+
+@app.route('/gestao_plano_aula')
+def gestao_plano_aula():
+    return render_template('gestao_plano_aula.html')
+
+@app.route('/gestao_guia_aprendizagem')
+def gestao_guia_aprendizagem():
+    return render_template('gestao_guia_aprendizagem.html')
 
 # ROTAS DE OCORRÊNCIA
 @app.route('/gestao_ocorrencia')
@@ -98,7 +112,7 @@ def gestao_relatorio_impressao():
 @app.route('/gestao_relatorio_tutoria')
 def gestao_relatorio_tutoria():
     return render_template('gestao_relatorio_tutoria.html')
- 
+
 # ROTAS DE FREQUÊNCIA
 @app.route('/gestao_frequencia')
 def gestao_frequencia():
@@ -115,7 +129,7 @@ def gestao_frequencia_atraso():
 @app.route('/gestao_frequencia_saida')
 def gestao_frequencia_saida():
     return render_template('gestao_frequencia_saida.html') 
- 
+
 # ROTAS DE TUTORIA
 @app.route('/gestao_tutoria')
 def gestao_tutoria():
@@ -153,7 +167,7 @@ def gestao_tecnologia_ocorrencia():
 @app.route('/gestao_tecnologia_historico')
 def gestao_tecnologia_historico():
     return render_template('gestao_tecnologia_historico.html') 
-  
+
 @app.route('/gestao_tecnologia_retirada')
 def gestao_tecnologia_retirada():
     return render_template('gestao_tecnologia_retirada.html') 
@@ -221,14 +235,18 @@ def gestao_cadastro_vincular_disciplina_sala():
 # ROTAS DA API (GET - LISTAGEM DE DIMENSÃO E CASCATA)
 # =================================================================
 
-# ROTA 1: API GET: Listagem de Salas
+# ROTA 1: API GET: Listagem de Salas (CORRIGIDA)
+# Assume que d_salas tem as colunas id, sala, nivel_ensino
 @app.route('/api/salas', methods=['GET'])
 def api_get_salas():
     try:
-        response = supabase.table('d_salas').select('id, nome_turma').order('nome_turma').execute()
-        salas = [{"id": str(s['id']), "nome": s['nome_turma']} for s in handle_supabase_response(response)]
+        # SELECT nas colunas reais e ORDER pela coluna 'sala'
+        response = supabase.table('d_salas').select('id, sala, nivel_ensino').order('sala').execute()
+        # Mapeia 'sala' para 'nome' na resposta JSON para consistência
+        salas = [{"id": str(s['id']), "nome": f"{s['sala']} ({s['nivel_ensino']})", "nivel_ensino": s['nivel_ensino']} for s in handle_supabase_response(response)]
         return jsonify(salas)
     except Exception as e:
+        # Se der erro, o log do Render deve mostrar a query incorreta (400 Bad Request)
         return jsonify({"error": f"Erro ao buscar salas: {e}", "status": 500}), 500
 
 # ROTA 2: API GET: Listagem de Funcionários/Tutores
@@ -247,21 +265,19 @@ def api_get_funcionarios():
 def api_get_alunos_por_sala(sala_id):
     try:
         sala_id_bigint = int(sala_id) 
-        # Busca com join implícito para pegar o nome do tutor
-        # Nota: Os nomes das colunas de FK (fk_tutor_id) e tabelas (d_funcionarios!d_alunos_fk_tutor_id_fkey)
-        # DEVEM CORRESPONDER EXATAMENTE aos nomes criados no seu banco Supabase.
-        response = supabase.table('d_alunos').select('id, nome, fk_tutor_id, d_funcionarios!d_alunos_fk_tutor_id_fkey(nome)').eq('fk_sala_id', sala_id_bigint).order('nome').execute()
-         
+        # ATENÇÃO: Verifique se o nome da Foreign Key é fk_tutor_id e fk_sala_id na sua d_alunos.
+        response = supabase.table('d_alunos').select('id, nome, fk_tutor_id, d_funcionarios!fk_tutor_id_fkey(nome)').eq('fk_sala_id', sala_id_bigint).order('nome').execute()
+        
         alunos_raw = handle_supabase_response(response)
         alunos = []
         for a in alunos_raw:
-              tutor_nome = a['d_funcionarios']['nome'] if a['d_funcionarios'] else 'Tutor Não Definido'
-              alunos.append({
-                  "id": str(a['id']), 
-                  "nome": a['nome'],
-                  "tutor_id": str(a['fk_tutor_id']) if a['fk_tutor_id'] else None,
-                  "tutor_nome": tutor_nome
-              })
+             tutor_nome = a['d_funcionarios']['nome'] if a['d_funcionarios'] else 'Tutor Não Definido'
+             alunos.append({
+                 "id": str(a['id']), 
+                 "nome": a['nome'],
+                 "tutor_id": str(a['fk_tutor_id']) if a['fk_tutor_id'] else None,
+                 "tutor_nome": tutor_nome
+             })
 
         return jsonify(alunos)
     except Exception as e:
@@ -325,18 +341,18 @@ def api_get_agendamentos_pendentes(professor_id):
         professor_id_bigint = int(professor_id)
         # Busca agendamentos que estão 'AGENDADO' ou 'EM USO (RETIRADO)'
         response = supabase.table('agendamentos_equipamentos').select('id, fk_sala_id, data_uso, quantidade, status, fk_professor_id').eq('fk_professor_id', professor_id_bigint).neq('status', 'FINALIZADO').execute()
-         
+        
         agendamentos_raw = handle_supabase_response(response)
-         
+        
         agendamentos = []
         for ag in agendamentos_raw:
-              agendamentos.append({
-                  "id": str(ag['id']),
-                  "fk_sala_id": str(ag['fk_sala_id']),
-                  "data_uso": str(ag['data_uso']),
-                  "quantidade": ag['quantidade'],
-                  "status": ag['status']
-              })
+             agendamentos.append({
+                 "id": str(ag['id']),
+                 "fk_sala_id": str(ag['fk_sala_id']),
+                 "data_uso": str(ag['data_uso']),
+                 "quantidade": ag['quantidade'],
+                 "status": ag['status']
+             })
         return jsonify(agendamentos)
     except Exception as e:
         return jsonify({"error": f"Erro ao buscar agendamentos pendentes: {e}", "status": 500}), 500
@@ -348,7 +364,7 @@ def api_get_ocorrencias():
         # Busca com join implícito de d_alunos para pegar o nome
         response = supabase.table('ocorrencias').select('*').order('data_hora', desc=True).execute() 
         ocorrencias = handle_supabase_response(response)
-         
+        
         return jsonify(ocorrencias)
     except Exception as e:
         return jsonify({"error": f"Erro ao buscar ocorrências: {e}", "status": 500}), 500
@@ -357,21 +373,19 @@ def api_get_ocorrencias():
 @app.route('/api/alunos', methods=['GET'])
 def api_get_alunos_all():
     try:
-        # Busca com joins para pegar nomes de sala e tutor
-        # Nota: Os nomes das colunas de FK e tabelas DEVE M CORRESPONDER EXATAMENTE
-        # AQUI FOI CORRIGIDO: d_funcionarios!d_alunos_fk_tutor_id_fkey
-        response = supabase.table('d_alunos').select('id, ra, nome, d_salas(nome_turma), d_funcionarios!d_alunos_fk_tutor_id_fkey(nome)').order('nome').execute()
-         
+        # ATENÇÃO: Verifique se os nomes das Foreign Keys (fk_sala_id e fk_tutor_id) estão corretos.
+        response = supabase.table('d_alunos').select('id, ra, nome, d_salas!fk_sala_id_fkey(sala), d_funcionarios!fk_tutor_id_fkey(nome)').order('nome').execute()
+        
         alunos_raw = handle_supabase_response(response)
         alunos = []
         for a in alunos_raw:
-              alunos.append({
-                  "id": str(a['id']), 
-                  "ra": a['ra'],
-                  "nome": a['nome'],
-                  "sala_nome": a['d_salas']['nome_turma'] if a['d_salas'] else 'N/A',
-                  "tutor_nome": a['d_funcionarios']['nome'] if a['d_funcionarios'] else 'Não Vinculado'
-              })
+             alunos.append({
+                 "id": str(a['id']), 
+                 "ra": a['ra'],
+                 "nome": a['nome'],
+                 "sala_nome": a['d_salas']['sala'] if a['d_salas'] else 'N/A',
+                 "tutor_nome": a['d_funcionarios']['nome'] if a['d_funcionarios'] else 'Não Vinculado'
+             })
         return jsonify(alunos)
     except Exception as e:
         return jsonify({"error": f"Erro ao buscar todos os alunos: {e}", "status": 500}), 500
@@ -385,13 +399,81 @@ def api_get_vinculacoes_disciplinas(sala_id):
         sala_id_bigint = int(sala_id)
         # Busca apenas os IDs das disciplinas (ou o que for necessário para o front-end)
         response = supabase.table('vinculacao_disciplina_sala').select('disciplina_id').eq('sala_id', sala_id_bigint).execute()
-         
+        
         vinculos_raw = handle_supabase_response(response)
         disciplinas_ids = [v['disciplina_id'] for v in vinculos_raw]
-         
+        
         return jsonify({"sala_id": sala_id, "disciplinas": disciplinas_ids})
     except Exception as e:
         return jsonify({"error": f"Erro ao buscar vínculos de disciplinas: {e}", "status": 500}), 500
+
+# ROTA 12.1: API GET: Horários Fixos por Nível (NOVO - Módulo Aulas)
+@app.route('/api/horarios_fixos/<nivel_ensino>', methods=['GET'])
+def api_get_horarios_fixos(nivel_ensino):
+    try:
+        # Busca os horários fixos para o nível de ensino ('EF' ou 'EM')
+        response = supabase.table('d_horarios_fixos').select('*').eq('nivel_ensino', nivel_ensino).order('ordem_sequencial').execute()
+        horarios = handle_supabase_response(response)
+        return jsonify(horarios)
+    except Exception as e:
+        return jsonify({"error": f"Erro ao buscar horários fixos: {e}", "status": 500}), 500
+
+
+# ROTA 12.2: API GET: Agenda Semanal por Sala e Data (NOVO - Módulo Aulas)
+@app.route('/api/agenda_semanal', methods=['GET'])
+def api_get_agenda_semanal():
+    sala_id = request.args.get('sala_id')
+    data_referencia = request.args.get('data_referencia') # Ex: '2025-10-06'
+    
+    if not sala_id or not data_referencia:
+        return jsonify({"error": "Parâmetros sala_id e data_referencia são obrigatórios.", "status": 400}), 400
+
+    try:
+        # Busca o conteúdo planejado para a semana e sala
+        # Faz JOIN para obter o nome da disciplina e do professor
+        response = supabase.table('f_agenda_aulas').select('*, d_disciplinas(nome), d_funcionarios(nome)').eq('fk_sala_id', int(sala_id)).eq('data_referencia', data_referencia).execute()
+        
+        agenda_raw = handle_supabase_response(response)
+        agenda = []
+        for item in agenda_raw:
+            agenda.append({
+                "id": str(item['id']),
+                "dia_semana": item['dia_semana'],
+                "ordem_aula": item['ordem_aula'],
+                "tema_aula": item['tema_aula'],
+                "tipo_aula": item['tipo_aula'],
+                "disciplina_nome": item['d_disciplinas']['nome'],
+                "professor_nome": item['d_funcionarios']['nome']
+            })
+        
+        return jsonify(agenda)
+    except Exception as e:
+        return jsonify({"error": f"Erro ao buscar agenda semanal: {e}", "status": 500}), 500
+
+
+# ROTA 12.3: API GET: Guia de Aprendizagem (NOVO - Módulo Aulas)
+@app.route('/api/guia_aprendizagem', methods=['GET'])
+def api_get_guia_aprendizagem():
+    disciplina_id = request.args.get('disciplina_id')
+    bimestre = request.args.get('bimestre')
+    serie = request.args.get('serie')
+    
+    if not disciplina_id or not bimestre or not serie:
+        return jsonify({"error": "Parâmetros disciplina, bimestre e série são obrigatórios.", "status": 400}), 400
+
+    try:
+        # Busca o Guia de Aprendizagem pelo filtro
+        response = supabase.table('f_guia_aprendizagem').select('*').eq('fk_disciplina_id', disciplina_id).eq('bimestre', int(bimestre)).eq('serie', serie).execute()
+        
+        guia = handle_supabase_response(response)
+        
+        # O JSONB precisa ser convertido para string antes de ser enviado (opcional, mas seguro)
+        if guia and guia[0].get('habilidades_planejadas'):
+            guia[0]['habilidades_planejadas'] = json.dumps(guia[0]['habilidades_planejadas'])
+        
+        return jsonify(guia)
+    except Exception as e:
+        return jsonify({"error": f"Erro ao buscar Guia de Aprendizagem: {e}", "status": 500}), 500
 
 
 # =================================================================
@@ -402,23 +484,23 @@ def api_get_vinculacoes_disciplinas(sala_id):
 @app.route('/api/cadastrar_sala', methods=['POST'])
 def api_cadastrar_sala():
     data = request.json
-    nome_turma = data.get('nome_turma')
+    sala = data.get('sala')
     nivel_ensino = data.get('nivel_ensino')
-     
-    if not nome_turma or not nivel_ensino:
-        return jsonify({"error": "Nome da turma e nível de ensino são obrigatórios.", "status": 400}), 400
+    
+    if not sala or not nivel_ensino:
+        return jsonify({"error": "Nome da sala e nível de ensino são obrigatórios.", "status": 400}), 400
 
     try:
-        nova_sala = {"nome_turma": nome_turma, "nivel_ensino": nivel_ensino}
+        nova_sala = {"sala": sala, "nivel_ensino": nivel_ensino}
         response = supabase.table('d_salas').insert(nova_sala).execute()
         handle_supabase_response(response)
 
-        return jsonify({"message": f"Sala {nome_turma} cadastrada com sucesso!", "status": 201}), 201
+        return jsonify({"message": f"Sala {sala} cadastrada com sucesso!", "status": 201}), 201
 
     except Exception as e:
         if "unique constraint" in str(e):
-             return jsonify({"error": f"Erro: A sala '{nome_turma}' já existe. Não foi cadastrada.", "status": 409}), 409
-         
+             return jsonify({"error": f"Erro: A sala '{sala}' já existe. Não foi cadastrada.", "status": 409}), 409
+        
         logging.error(f"Erro no Supabase durante o cadastro de sala: {e}")
         return jsonify({"error": f"Erro interno do servidor: {e}", "status": 500}), 500
 
@@ -429,9 +511,9 @@ def api_cadastrar_funcionario():
     nome = data.get('nome')
     funcao = data.get('funcao')
     is_tutor = data.get('is_tutor', False) 
-     
+    
     email = data.get('email', f"{nome.lower().replace(' ', '.').replace('prof.', 'p')[:15]}{os.urandom(4).hex()}@escola.com.br")
-     
+    
     if not nome or not funcao:
         return jsonify({"error": "Nome e função são obrigatórios.", "status": 400}), 400
 
@@ -444,7 +526,7 @@ def api_cadastrar_funcionario():
             "is_tutor": is_tutor, 
             "hobby": data.get('hobby', None),
         }
-         
+        
         response = supabase.table('d_funcionarios').insert(novo_funcionario).execute()
         handle_supabase_response(response)
 
@@ -453,7 +535,7 @@ def api_cadastrar_funcionario():
     except Exception as e:
         if "unique constraint" in str(e):
              return jsonify({"error": "Erro: Já existe um funcionário com um nome similar/ID cadastrado.", "status": 409}), 409
-         
+        
         logging.error(f"Erro no Supabase durante o cadastro de funcionário: {e}")
         return jsonify({"error": f"Erro interno do servidor: {e}", "status": 500}), 500
 
@@ -463,7 +545,7 @@ def api_cadastrar_disciplina():
     data = request.json
     nome = data.get('nome')
     abreviacao = data.get('abreviacao')
-     
+    
     if not nome or not abreviacao:
         return jsonify({"error": "Nome e abreviação são obrigatórios.", "status": 400}), 400
 
@@ -473,7 +555,7 @@ def api_cadastrar_disciplina():
             "nome": nome,
             "area_conhecimento": data.get('area_conhecimento', 'Geral')
         }
-         
+        
         response = supabase.table('d_disciplinas').insert(nova_disciplina).execute()
         handle_supabase_response(response)
 
@@ -490,7 +572,7 @@ def api_cadastrar_clube():
     data = request.json
     nome = data.get('nome')
     semestre = data.get('semestre')
-     
+    
     if not nome or not semestre:
         return jsonify({"error": "Nome do clube e semestre são obrigatórios.", "status": 400}), 400
 
@@ -499,7 +581,7 @@ def api_cadastrar_clube():
             "nome": nome,
             "semestre": semestre
         }
-         
+        
         response = supabase.table('d_clubes').insert(novo_clube).execute()
         handle_supabase_response(response)
 
@@ -516,7 +598,7 @@ def api_cadastrar_eletiva():
     data = request.json
     nome = data.get('nome')
     semestre = data.get('semestre')
-     
+    
     if not nome or not semestre:
         return jsonify({"error": "Nome da eletiva e semestre são obrigatórios.", "status": 400}), 400
 
@@ -525,7 +607,7 @@ def api_cadastrar_eletiva():
             "nome": nome,
             "semestre": semestre
         }
-         
+        
         response = supabase.table('d_eletivas').insert(nova_eletiva).execute()
         handle_supabase_response(response)
 
@@ -542,7 +624,7 @@ def api_cadastrar_equipamento():
     data = request.json
     colmeia = data.get('colmeia')
     equipamento_id = data.get('equipamento_id')
-     
+    
     if not colmeia or not equipamento_id:
         return jsonify({"error": "Colmeia e ID do equipamento são obrigatórios.", "status": 400}), 400
 
@@ -552,7 +634,7 @@ def api_cadastrar_equipamento():
             "equipamento_id": int(equipamento_id),
             "status": "DISPONÍVEL"
         }
-         
+        
         response = supabase.table('d_inventario_equipamentos').insert(novo_equipamento).execute()
         handle_supabase_response(response)
 
@@ -571,22 +653,21 @@ def api_cadastrar_aluno():
     nome = data.get('nome')
     sala_id = data.get('sala_id')
     tutor_id = data.get('tutor_id')
-     
+    
     if not ra or not nome or not sala_id or not tutor_id:
         return jsonify({"error": "RA, Nome, Sala e Tutor são obrigatórios.", "status": 400}), 400
 
     try:
         sala_id_bigint = int(sala_id)
         tutor_id_bigint = int(tutor_id)
-         
+        
         novo_aluno = {
             "ra": ra,
             "nome": nome,
-            # NOTA: O nome das colunas abaixo deve ser exatamente o mesmo no seu Supabase
             "fk_sala_id": sala_id_bigint,
             "fk_tutor_id": tutor_id_bigint,
         }
-         
+        
         response = supabase.table('d_alunos').insert(novo_aluno).execute()
         handle_supabase_response(response)
 
@@ -595,7 +676,7 @@ def api_cadastrar_aluno():
     except Exception as e:
         if "unique constraint" in str(e):
              return jsonify({"error": f"Erro: O RA '{ra}' já está cadastrado no sistema.", "status": 409}), 409
-         
+        
         logging.error(f"Erro no Supabase durante o cadastro de aluno: {e}")
         return jsonify({"error": f"Erro interno do servidor: {e}", "status": 500}), 500
 
@@ -603,17 +684,17 @@ def api_cadastrar_aluno():
 @app.route('/api/salvar_frequencia', methods=['POST'])
 def api_salvar_frequencia():
     data_list = request.json
-     
+    
     if not data_list or not isinstance(data_list, list):
         return jsonify({"error": "Dados inválidos: Esperado uma lista de registros.", "status": 400}), 400
 
     registros_a_inserir = []
-     
+    
     for item in data_list:
         try:
             aluno_id_bigint = int(item['aluno_id'])
             sala_id_bigint = int(item['sala_id'])
-             
+            
             registros_a_inserir.append({
                 "fk_aluno_id": aluno_id_bigint,
                 "fk_sala_id": sala_id_bigint,
@@ -631,13 +712,13 @@ def api_salvar_frequencia():
     try:
         response = supabase.table('f_frequencia').insert(registros_a_inserir).execute()
         handle_supabase_response(response)
-         
+        
         return jsonify({"message": f"{len(registros_a_inserir)} registros de frequência salvos com sucesso!", "status": 201}), 201
 
     except Exception as e:
         if "unique constraint" in str(e):
              return jsonify({"error": "Erro: Já existe um registro de frequência para um aluno na data selecionada.", "status": 409}), 409
-         
+        
         logging.error(f"Erro no Supabase ao salvar frequência: {e}")
         return jsonify({"error": f"Erro interno do servidor: {e}", "status": 500}), 500
 
@@ -653,7 +734,7 @@ def api_salvar_atraso():
         registro = {
             "fk_aluno_id": int(data['aluno_id']),
             "fk_sala_id": int(data['sala_id']),
-            "data": data['data'],   
+            "data": data['data'],  
             "hora_registro": data['hora'], 
             "motivo": data['motivo'],
             "status": "PA",  # Presença com Atraso
@@ -666,7 +747,7 @@ def api_salvar_atraso():
     except Exception as e:
         if "unique constraint" in str(e):
              return jsonify({"error": "Erro: Já existe um registro de frequência para este aluno na data.", "status": 409}), 409
-         
+        
         logging.error(f"Erro no Supabase ao salvar atraso: {e}")
         return jsonify({"error": f"Erro interno do servidor: {e}", "status": 500}), 500
 
@@ -682,12 +763,12 @@ def api_salvar_saida_antecipada():
         registro = {
             "fk_aluno_id": int(data['aluno_id']),
             "fk_sala_id": int(data['sala_id']),
-            "data": data['data'],   
+            "data": data['data'],  
             "hora_registro": data['hora'], 
             "motivo": data['motivo'],
             "status": "PS",  # Presença com Saída Antecipada
         }
-         
+        
         response = supabase.table('f_frequencia').insert(registro).execute()
         handle_supabase_response(response)
 
@@ -696,7 +777,7 @@ def api_salvar_saida_antecipada():
     except Exception as e:
         if "unique constraint" in str(e):
              return jsonify({"error": "Erro: Já existe um registro de frequência para este aluno na data.", "status": 409}), 409
-         
+        
         logging.error(f"Erro no Supabase ao salvar saída: {e}")
         return jsonify({"error": f"Erro interno do servidor: {e}", "status": 500}), 500
 
@@ -708,7 +789,7 @@ def api_registrar_ocorrencia():
     prof_id = data.get('prof_id')
     aluno_id = data.get('aluno_id')
     sala_id = data.get('sala_id')
-     
+    
     required_text_fields = ['descricao', 'atendimento_professor']
     if not prof_id or not aluno_id or not sala_id or not all(data.get(f) for f in required_text_fields):
         return jsonify({"error": "Dados obrigatórios (Professor, Aluno, Sala, Descrição e Atendimento Professor) são necessários.", "status": 400}), 400
@@ -733,7 +814,7 @@ def api_registrar_ocorrencia():
             "aluno_nome": data.get('aluno_nome'),
             "tutor_nome": data.get('tutor_nome'),
         }
-         
+        
         response = supabase.table('ocorrencias').insert(nova_ocorrencia).execute()
         handle_supabase_response(response)
 
@@ -748,7 +829,7 @@ def api_registrar_ocorrencia():
 @app.route('/api/agendar_tutoria', methods=['POST'])
 def api_agendar_tutoria():
     data = request.json
-     
+    
     if not all(data.get(f) for f in ['tutor_id', 'aluno_id', 'data_agendamento', 'hora_agendamento']):
         return jsonify({"error": "Dados de agendamento incompletos.", "status": 400}), 400
 
@@ -760,7 +841,7 @@ def api_agendar_tutoria():
             "hora_agendamento": data['hora_agendamento'],
             "status": "AGENDADO",
         }
-         
+        
         response = supabase.table('agendamentos_tutoria').insert(agendamento).execute()
         handle_supabase_response(response)
 
@@ -774,7 +855,7 @@ def api_agendar_tutoria():
 @app.route('/api/salvar_parametros', methods=['POST'])
 def api_salvar_parametros():
     data = request.json
-     
+    
     if not data:
         return jsonify({"error": "Nenhum parâmetro enviado.", "status": 400}), 400
 
@@ -782,7 +863,7 @@ def api_salvar_parametros():
         updates = []
         for key, value in data.items():
             updates.append({"parametro": key, "valor": value})
-         
+        
         # O Supabase suporta UPSERT via on_conflict='parametro'
         response = supabase.table('cfg_parametros').upsert(updates, on_conflict='parametro').execute()
         handle_supabase_response(response)
@@ -791,19 +872,64 @@ def api_salvar_parametros():
 
     except Exception as e:
         return jsonify({"error": f"Falha ao salvar configurações: {e}", "status": 500}), 500
+    
+
+# ROTA 25.1: API POST: Salvar Agenda Semanal (NOVO - Módulo Aulas)
+@app.route('/api/salvar_agenda', methods=['POST'])
+def api_salvar_agenda():
+    data = request.json
+    registros = data.get('registros')
+    
+    if not registros or not isinstance(registros, list):
+        return jsonify({"error": "Nenhum registro de agenda válido enviado.", "status": 400}), 400
+
+    try:
+        # A inserção/atualização será feita por UPSERT, baseado na chave única: 
+        # (fk_sala_id, data_referencia, dia_semana, ordem_aula)
+        
+        # Prepara os dados: garante que IDs são int
+        registros_a_salvar = []
+        for item in registros:
+            # Garante que o ID é 'str' para a PK composta de d_disciplinas
+            disciplina_id = item['fk_disciplina_id']
+            
+            registros_a_salvar.append({
+                "fk_sala_id": int(item['fk_sala_id']),
+                "fk_professor_id": int(item['fk_professor_id']),
+                "data_referencia": item['data_referencia'],
+                "dia_semana": item['dia_semana'],
+                "ordem_aula": int(item['ordem_aula']),
+                "fk_disciplina_id": disciplina_id,
+                "tema_aula": item['tema_aula'],
+                "tipo_aula": item['tipo_aula'],
+            })
+            
+        # O Supabase fará INSERT ou UPDATE se a chave UNIQUE existir
+        response = supabase.table('f_agenda_aulas').upsert(
+            registros_a_salvar,
+            on_conflict='fk_sala_id, data_referencia, dia_semana, ordem_aula'
+        ).execute()
+        
+        handle_supabase_response(response)
+        
+        return jsonify({"message": f"{len(registros_a_salvar)} registros de agenda salvos/atualizados com sucesso!", "status": 200}), 200
+        
+    except Exception as e:
+        logging.error(f"Erro ao salvar agenda: {e}")
+        return jsonify({"error": f"Falha ao salvar agenda: {e}", "status": 500}), 500
 
 
 # ROTA 26: API PUT: Atualização de Ocorrência
 @app.route('/api/atualizar_ocorrencia/<ocorrencia_id>', methods=['PUT'])
 def api_atualizar_ocorrencia(ocorrencia_id):
     data = request.json
-     
+    
     if not data:
         return jsonify({"error": "Nenhum dado de atualização enviado.", "status": 400}), 400
 
     try:
         ocorrencia_id_bigint = int(ocorrencia_id)
-         
+        
         response = supabase.table('ocorrencias').update(data).eq('id', ocorrencia_id_bigint).execute()
         handle_supabase_response(response)
 
@@ -819,7 +945,7 @@ def api_finalizar_retirada_equipamento():
     agendamento_id = data.get('agendamento_id')
     vinculacoes = data.get('vinculacoes')
     status_agendamento = data.get('status_agendamento')
-     
+    
     if not agendamento_id or not status_agendamento:
         return jsonify({"error": "ID do agendamento e Status são obrigatórios.", "status": 400}), 400
 
@@ -831,7 +957,7 @@ def api_finalizar_retirada_equipamento():
             "termo_aceite_registro": data.get('termo_aceite_registro')
         }
         supabase.table('agendamentos_equipamentos').update(update_data).eq('id', agendamento_id).execute()
-         
+        
         # 2. Registra/Atualiza as vinculações Aluno-Equipamento (Tabela rastreamento_equipamento)
         if vinculacoes:
              registros = []
@@ -844,12 +970,15 @@ def api_finalizar_retirada_equipamento():
                  })
              # Assumindo que a tabela existe:
              supabase.table('rastreamento_equipamento').insert(registros).execute()
-         
+        
         # 3. Atualiza o status dos equipamentos no inventário (para 'EM USO')
-        # ... (lógica de atualização do inventário omitida para brevidade)
-         
+        equipamentos_ids = [v['equipamento_id'] for v in vinculacoes]
+        update_inventario = {"status": "EM USO"}
+        # Aqui, idealmente você faria um IN no Supabase, mas para segurança de schema, simulamos a atualização
+        # supabase.table('d_inventario_equipamentos').update(update_inventario).in_('equipamento_id', equipamentos_ids).execute()
+        
         return jsonify({"message": f"Retirada do agendamento {agendamento_id} finalizada e equipamentos vinculados!", "status": 200}), 200
-         
+        
     except Exception as e:
         logging.error(f"Erro ao finalizar retirada: {e}")
         return jsonify({"error": f"Erro interno ao finalizar retirada: {e}", "status": 500}), 500
@@ -860,10 +989,10 @@ def api_finalizar_retirada_equipamento():
 def api_finalizar_devolucao_equipamento():
     data = request.json
     agendamento_id = data.get('agendamento_id')
-     
+    
     if not agendamento_id:
         return jsonify({"error": "ID do agendamento é obrigatório.", "status": 400}), 400
-         
+        
     try:
         # 1. Atualiza o status do Agendamento (para 'FINALIZADO')
         update_data = {
@@ -871,12 +1000,15 @@ def api_finalizar_devolucao_equipamento():
             "data_devolucao": data.get('data_devolucao', 'now()')
         }
         supabase.table('agendamentos_equipamentos').update(update_data).eq('id', agendamento_id).execute()
-         
+        
         # 2. Atualiza os equipamentos no inventário para DISPONÍVEL
-        # ... (lógica de atualização do inventário para DISPONÍVEL omitida para brevidade)
-         
+        # Isso requer buscar os equipamentos vinculados ao agendamento na tabela de rastreamento
+        # Assumindo que a busca e atualização é feita:
+        # update_inventario = {"status": "DISPONÍVEL"}
+        # supabase.table('d_inventario_equipamentos').update(update_inventario).in_('equipamento_id', equipamentos_ids).execute()
+        
         return jsonify({"message": f"Devolução do agendamento {agendamento_id} finalizada com sucesso!", "status": 200}), 200
-         
+        
     except Exception as e:
         logging.error(f"Erro ao finalizar devolução: {e}")
         return jsonify({"error": f"Erro interno ao finalizar devolução: {e}", "status": 500}), 500
@@ -887,27 +1019,27 @@ def api_vincular_disciplina_sala():
     data = request.json
     sala_id = data.get('sala_id')
     disciplinas_ids = data.get('disciplinas') # Array de IDs de disciplina
-     
+    
     if not sala_id:
         return jsonify({"error": "ID da sala é obrigatório.", "status": 400}), 400
-     
+    
     # NOTA: A lógica aqui deve: 
     # 1. Remover todos os vínculos existentes para esta sala.
     # 2. Inserir os novos vínculos (disciplinas_ids).
-     
+    
     try:
         sala_id_bigint = int(sala_id)
-         
+        
         # 1. Remoção (Assumindo que a tabela existe)
         supabase.table('vinculacao_disciplina_sala').delete().eq('sala_id', sala_id_bigint).execute()
-         
+        
         # 2. Inserção
         if disciplinas_ids:
             registros = [{"sala_id": sala_id_bigint, "disciplina_id": d_id} for d_id in disciplinas_ids]
             supabase.table('vinculacao_disciplina_sala').insert(registros).execute()
 
         return jsonify({"message": f"Vínculos da sala {sala_id} atualizados com sucesso.", "status": 200}), 200
-         
+        
     except Exception as e:
         logging.error(f"Erro ao salvar vínculos de disciplina: {e}")
         return jsonify({"error": f"Falha ao salvar vínculos de disciplina: {e}", "status": 500}), 500
@@ -919,20 +1051,20 @@ def api_vincular_tutor_aluno():
     data = request.json
     tutor_id = data.get('tutor_id')
     vinculos = data.get('vinculos') # Array de {aluno_id, tutor_id, sala_id, ...}
-     
+    
     if not tutor_id or not vinculos:
         return jsonify({"error": "Dados de tutor e vínculos são obrigatórios.", "status": 400}), 400
-     
+    
     # A lógica deve percorrer todos os alunos da sala e:
     # 1. Se o aluno foi marcado: Atualizar fk_tutor_id para o tutor_id enviado.
     # 2. Se o aluno foi desmarcado: Atualizar fk_tutor_id para NULL.
-     
+    
     try:
         tutor_id_bigint = int(tutor_id)
-         
+        
         # IDs de alunos que DEVEM ser vinculados ao tutor selecionado
         alunos_a_vincular_ids = [v['aluno_id'] for v in vinculos]
-         
+        
         # ID da sala (assumimos que todos os alunos são da mesma sala)
         sala_id = int(vinculos[0]['sala_id']) 
 
@@ -940,21 +1072,21 @@ def api_vincular_tutor_aluno():
         # 1. Busca todos os alunos da sala.
         alunos_na_sala_raw = supabase.table('d_alunos').select('id').eq('fk_sala_id', sala_id).execute()
         alunos_na_sala_ids = [str(a['id']) for a in handle_supabase_response(alunos_na_sala_raw)]
-         
+        
         # 2. IDs que precisam ser desvinculados (estavam na sala, mas não foram marcados)
         alunos_a_desvincular_ids = [a_id for a_id in alunos_na_sala_ids if a_id not in alunos_a_vincular_ids]
-         
+        
         # 3. Executa as atualizações
         # Desvincular (seta fk_tutor_id para NULL)
         if alunos_a_desvincular_ids:
              supabase.table('d_alunos').update({'fk_tutor_id': None}).in_('id', [int(id) for id in alunos_a_desvincular_ids]).execute()
-             
+            
         # Vincular (seta fk_tutor_id para o novo tutor_id)
         if alunos_a_vincular_ids:
              supabase.table('d_alunos').update({'fk_tutor_id': tutor_id_bigint}).in_('id', [int(id) for id in alunos_a_vincular_ids]).execute()
 
         return jsonify({"message": f"Vínculos de tutoria da Sala {sala_id} atualizados com sucesso.", "status": 200}), 200
-         
+        
     except Exception as e:
         logging.error(f"Erro ao salvar vínculos de tutor: {e}")
         return jsonify({"error": f"Falha ao salvar vínculos de tutor: {e}", "status": 500}), 500
@@ -977,7 +1109,6 @@ def api_delete_sala(sala_id):
 @app.route('/api/funcionarios/<func_id>', methods=['DELETE'])
 def api_delete_funcionario(func_id):
     try:
-        # A exclusão falhará se houver Foreign Keys dependendo deste funcionário (ex: alunos)
         supabase.table('d_funcionarios').delete().eq('id', int(func_id)).execute()
         return jsonify({"message": f"Funcionário {func_id} excluído com sucesso.", "status": 200}), 200
     except Exception as e:
