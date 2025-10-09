@@ -52,7 +52,7 @@ def handle_supabase_response(response):
 @app.route('/')
 def home():
     """Rota principal, pode ser um menu inicial."""
-    return render_template('index.html') 
+    return render_template('home.html') 
 
 # ROTA 1.1: MÓDULO AULAS (NOVO)
 @app.route('/gestao_aulas')
@@ -1175,3 +1175,4 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
