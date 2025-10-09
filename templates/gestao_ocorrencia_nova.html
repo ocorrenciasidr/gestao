@@ -100,9 +100,9 @@
             // 2. Preencher Salas
             const selectSala = document.getElementById('sala');
             selectSala.innerHTML = '<option value="" disabled selected>Selecione a Sala</option>';
-            salas.sort((a, b) => a.nome_turma.localeCompare(b.nome_turma)).forEach(sala => {
+            salas.sort((a, b) => a.sala.localeCompare(b.sala)).forEach(sala => {
                 // Usamos o ID da sala como value
-                selectSala.insertAdjacentHTML('beforeend', `<option value="${sala.id}">${sala.nome_turma}</option>`);
+                selectSala.insertAdjacentHTML('beforeend', `<option value="${sala.id}">${sala.sala}</option>`);
             });
             
             // Força a atualização inicial
@@ -355,4 +355,5 @@
     </div>
 
 </body>
+
 </html>
