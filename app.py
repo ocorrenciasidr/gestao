@@ -2,24 +2,26 @@
 
 import os
 import logging
-from dotenv import load_dotenv
+# NÃO PRECISA MAIS DO load_dotenv() no Render, pois as variáveis são injetadas
+# from dotenv import load_dotenv 
 from flask import Flask, render_template, request, jsonify
 from supabase import create_client, Client
-import os # Importar para usar os.urandom.hex
+import os # Manter este import se você precisar de os.urandom.hex
 
 # Configuração de Logs
 logging.basicConfig(level=logging.INFO)
-load_dotenv()
+# load_dotenv() # Removido para implantação no Render
 
 # =================================================================
 # CONFIGURAÇÃO SUPABASE
 # =================================================================
-SUPABASE_URL: str = os.environ.get("https://rimuhgulxliduugenxro.supabase.co")
-SUPABASE_KEY: str = os.environ.get("seyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJpbXVoZ3VseGxpZHV1Z2VueHJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkzNTU3NTgsImV4cCI6MjA3NDkzMTc1OH0.h5E_WzZLbXSAaACPjDNe7GtEYQFL6nkIdU2isUNbXiA")
+# O Render injeta estas variáveis no os.environ
+SUPABASE_URL: str = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY: str = os.environ.get("SUPABASE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    # Em um ambiente de produção, é melhor não expor a chave, mas para desenvolvimento é necessário.
-    raise ValueError("As variáveis SUPABASE_URL e SUPABASE_KEY devem ser configuradas no arquivo .env")
+    # A exceção é mantida caso o usuário esqueça de configurar as variáveis no painel do Render
+    raise ValueError("As variáveis SUPABASE_URL e SUPABASE_KEY devem ser configuradas no painel do Render (Environment Variables).")
 
 # Inicializa o cliente Supabase
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -35,12 +37,148 @@ def handle_supabase_response(response):
     """Verifica erros na resposta do Supabase e retorna os dados."""
     if response.data:
         return response.data
-    logging.error(f"Erro no Supabase: {response.error}")
-    # PGRST301 é o código para "Nenhuma linha encontrada" - tratamos como lista vazia
-    if response.error and response.error.code == 'PGRST301': 
-        return []
-    # Se for outro erro, lançamos uma exceção
-    raise Exception(response.error.message if response.error else "Erro desconhecido no Supabase")
+    logging.error(f"Erro no Supabase: {response.error.message}")
+    # Levantar um erro no servidor, melhor do que retornar None
+    raise Exception(f"Erro ao buscar dados no Supabase: {response.error.message}")
+
+# =================================================================
+# ROTAS FRONT-END (HTML)
+# =================================================================
+
+# ROTA 1: Principal (Index)
+@app.route('/')
+def index():
+    # Esta rota espera que o arquivo 'index.html' esteja na pasta 'templates'
+    return render_template('index.html')
+
+# =================================================================
+# ROTAS API (GET)
+# =================================================================
+
+# ROTA 2: API GET: Buscar todas as ocorrências
+@app.route('/api/ocorrencias', methods=['GET'])
+def api_get_ocorrencias():
+    try:
+        response = supabase.table('ocorrencias').select('*').execute()
+        return jsonify(handle_supabase_response(response)), 200
+    except Exception as e:
+        logging.error(f"Erro ao buscar ocorrências: {e}")
+        return jsonify({"error": "Falha ao buscar ocorrências", "details": str(e)}), 500
+
+# ROTA 3: API GET: Buscar todos os alunos
+@app.route('/api/alunos', methods=['GET'])
+def api_get_alunos():
+    try:
+        # Exemplo de JOIN: buscar alunos com nome do tutor
+        response = supabase.table('d_alunos').select('*, tutor:d_funcionarios(nome)').execute()
+        # Mapeia a resposta para incluir apenas o nome do tutor
+        alunos_com_tutor = [
+            {**aluno, 'tutor_nome': aluno['tutor']['nome']}
+            for aluno in response.data
+        ]
+        return jsonify(alunos_com_tutor), 200
+    except Exception as e:
+        logging.error(f"Erro ao buscar alunos: {e}")
+        return jsonify({"error": "Falha ao buscar alunos", "details": str(e)}), 500
+
+# ROTA 4: API GET: Buscar todos os funcionários
+@app.route('/api/funcionarios', methods=['GET'])
+def api_get_funcionarios():
+    try:
+        response = supabase.table('d_funcionarios').select('*').execute()
+        return jsonify(handle_supabase_response(response)), 200
+    except Exception as e:
+        logging.error(f"Erro ao buscar funcionários: {e}")
+        return jsonify({"error": "Falha ao buscar funcionários", "details": str(e)}), 500
+
+# ROTA 5: API GET: Buscar equipamentos
+@app.route('/api/equipamentos', methods=['GET'])
+def api_get_equipamentos():
+    try:
+        response = supabase.table('equipamentos').select('*').execute()
+        return jsonify(handle_supabase_response(response)), 200
+    except Exception as e:
+        logging.error(f"Erro ao buscar equipamentos: {e}")
+        return jsonify({"error": "Falha ao buscar equipamentos", "details": str(e)}), 500
+
+# ROTA 6: API GET: Buscar salas
+@app.route('/api/salas', methods=['GET'])
+def api_get_salas():
+    try:
+        response = supabase.table('d_salas').select('*').execute()
+        return jsonify(handle_supabase_response(response)), 200
+    except Exception as e:
+        logging.error(f"Erro ao buscar salas: {e}")
+        return jsonify({"error": "Falha ao buscar salas", "details": str(e)}), 500
+
+# =================================================================
+# ROTAS API (POST/PUT/DELETE)
+# (Outras rotas de API omitidas para brevidade, mas devem ser mantidas se existirem)
+# =================================================================
+
+# ROTA 7: API POST: Inserir nova ocorrência
+@app.route('/api/ocorrencias', methods=['POST'])
+def api_post_ocorrencia():
+    try:
+        data = request.json
+        # Adicionar o campo id_ocorrencia, pois sua tabela de ocorrências não tem o auto-incremento padrão
+        # Isso é um ID aleatório para evitar colisões
+        if 'id' not in data:
+             # Gerar um ID aleatório (simplificado, use UUIDs em prod)
+            data['id'] = int(os.urandom(4).hex(), 16) % 100000000
+
+        response = supabase.table('ocorrencias').insert(data).execute()
+        return jsonify(handle_supabase_response(response)), 201
+    except Exception as e:
+        logging.error(f"Erro ao inserir ocorrência: {e}")
+        return jsonify({"error": "Falha ao inserir ocorrência", "details": str(e)}), 500
+
+# ROTA 37: API DELETE: Exclusão de Aluno
+@app.route('/api/alunos/<aluno_id>', methods=['DELETE'])
+def api_delete_aluno(aluno_id):
+    try:
+        supabase.table('d_alunos').delete().eq('id', int(aluno_id)).execute()
+        return jsonify({"message": f"Aluno {aluno_id} excluído com sucesso.", "status": 200}), 200
+    except Exception as e:
+        return jsonify({"error": f"Falha ao excluir aluno: {e}", "status": 500}), 500
+
+# ROTA 38: API DELETE: Exclusão de Ocorrência
+@app.route('/api/ocorrencias/<ocorrencia_id>', methods=['DELETE'])
+def api_delete_ocorrencia(ocorrencia_id):
+    try:
+        supabase.table('ocorrencias').delete().eq('id', int(ocorrencia_id)).execute()
+        return jsonify({"message": f"Ocorrência {ocorrencia_id} excluída com sucesso.", "status": 200}), 200
+    except Exception as e:
+        return jsonify({"error": f"Falha ao excluir ocorrência: {e}", "status": 500}), 500
+
+# ROTA 39: API DELETE: Exclusão de Funcionário
+@app.route('/api/funcionarios/<func_id>', methods=['DELETE'])
+def api_delete_funcionario(func_id):
+    try:
+        supabase.table('d_funcionarios').delete().eq('id', int(func_id)).execute()
+        return jsonify({"message": f"Funcionário {func_id} excluído com sucesso.", "status": 200}), 200
+    except Exception as e:
+        # A exclusão pode falhar se houver alunos referenciando este funcionário (Foreign Key)
+        return jsonify({"error": f"Falha ao excluir funcionário: {e}", "status": 500}), 500
+
+# ROTA 40: API DELETE: Exclusão de Equipamento
+@app.route('/api/equipamentos/<eq_id>', methods=['DELETE'])
+def api_delete_equipamento(eq_id):
+    try:
+        supabase.table('equipamentos').delete().eq('id', int(eq_id)).execute()
+        return jsonify({"message": f"Equipamento {eq_id} excluído com sucesso.", "status": 200}), 200
+    except Exception as e:
+        return jsonify({"error": f"Falha ao excluir equipamento: {e}", "status": 500}), 500
+
+
+# =================================================================
+# BLOCO DE EXECUÇÃO
+# =================================================================
+if __name__ == '__main__':
+    # No Render, o servidor de produção Gunicorn lida com isso.
+    # Esta parte é geralmente usada apenas para testes locais.
+    app.run(debug=True)
+
 
 # =================================================================
 # ROTAS DO FRONT-END (Renderiza as páginas HTML)
@@ -1038,4 +1176,5 @@ def api_delete_ocorrencia(ocorrencia_id):
 
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
+
     app.run(debug=True)
