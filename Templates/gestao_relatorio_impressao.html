@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Impressão de Ocorrências</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Configuração personalizada do Tailwind
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'dark-primary': '#0F172A', 
+                        'dark-secondary': '#1E293B', 
+                        'accent': '#10B981', 
+                        'text-light': '#F8FAFC', 
+                        'info': '#3B82F6',
+                        'danger': '#DC2626',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+        
+        let salasData = [];
+        let alunosData = [];
+        let relatorioGerado = false;
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            preencherFiltrosSala(); 
+            document.getElementById('filter-sala').addEventListener('change', preencherFiltrosAluno);
+        });
+
+        // Helper para lidar com erros de fetch
+        async function handleFetchResponse(url, context) {
+            const response = await fetch(url);
+            if (!response.ok) {
+                mostrarMensagem(`Erro ao buscar ${context}. Falha na API.`, 'danger');
+                throw new Error(`Falha no fetch de ${context}`);
+            }
+            return response.json();
+        }
+
+        function mostrarMensagem(texto, tipo) {
+             const msgElement = document.getElementById('mensagem-status');
+             msgElement.textContent = texto;
+             msgElement.classList.remove('hidden', 'bg-success', 'bg-danger', 'bg-warning', 'bg-info');
+             
+             const classMap = { 'success': 'bg-accent', 'danger': 'bg-danger', 'warning': 'bg-yellow-500', 'info': 'bg-info' };
+             msgElement.classList.add(classMap[tipo] || 'bg-gray-600');
+             msgElement.classList.remove('hidden');
+             setTimeout(() => { msgElement.classList.add('hidden'); }, 5000);
+        }
+
+        // 1. FILTRO: Carrega as Salas
+        window.preencherFiltrosSala = async function() {
+            const selectSala = document.getElementById('filter-sala');
+            selectSala.innerHTML = '<option value="">Carregando Salas...</option>';
+            try {
+                salasData = await handleFetchResponse('/api/salas', 'Salas');
+                selectSala.innerHTML = '<option value="">SELECIONE A SALA *</option>';
+                salasData.sort((a, b) => a.nome_turma.localeCompare(b.nome_turma)).forEach(s => { 
+                    selectSala.innerHTML += `<option value="${s.id}">${s.nome_turma}</option>`; 
+                });
+                
+            } catch (error) { 
+                selectSala.innerHTML = '<option value="">ERRO AO CARREGAR SALAS</option>';
+            }
+        }
+
+        // 2. FILTRO: Carrega Alunos
+        window.preencherFiltrosAluno = async function() {
+            const filterSala = document.getElementById('filter-sala').value;
+            const selectAluno = document.getElementById('filter-aluno');
+            
+            selectAluno.innerHTML = '<option value="">Selecione a Sala...</option>';
+            selectAluno.disabled = true;
+            
+            if (filterSala) {
+                try {
+                    // Endpoint /api/alunos_por_sala/ precisa ser criado no Flask
+                    alunosData = await handleFetchResponse(`/api/alunos_por_sala/${filterSala}`, 'Alunos');
+
+                    selectAluno.innerHTML = '<option value="">TODOS OS ALUNOS</option>';
+                    alunosData.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(a => { 
+                        selectAluno.innerHTML += `<option value="${a.id}">${a.nome}</option>`; 
+                    });
+                    selectAluno.disabled = false;
+                } catch (error) { 
+                    selectAluno.innerHTML = '<option value="">ERRO AO CARREGAR ALUNOS</option>';
+                }
+            } else {
+                 selectAluno.innerHTML = '<option value="">TODOS OS ALUNOS</option>';
+            }
+        }
+        
+        // 3. LÓGICA DO RELATÓRIO
+        window.gerarRelatorio = function() {
+            const salaId = document.getElementById('filter-sala').value;
+            const alunoId = document.getElementById('filter-aluno').value;
+            const dataInicial = document.getElementById('filter-data-inicial').value;
+            const dataFinal = document.getElementById('filter-data-final').value;
+
+            if (!salaId || !dataInicial || !dataFinal) {
+                mostrarMensagem('Erro: Selecione a Sala, a Data Inicial e a Data Final.', 'danger');
+                return;
+            }
+            
+            mostrarMensagem('Gerando Relatório para Impressão...', 'info');
+
+            // SIMULAÇÃO: Aqui você faria a chamada FETCH para o Flask para buscar os dados das ocorrências
+            // Rota GET /api/ocorrencias_para_impressao?sala=X&aluno=Y&inicio=Z&fim=W
+            
+            // Simulação de 1.5s para carregamento
+            setTimeout(() => {
+                const salaNome = salasData.find(s => s.id === salaId)?.nome_turma || 'Sala Desconhecida';
+                const alunoNome = alunoId 
+                    ? (alunosData.find(a => a.id === alunoId)?.nome || 'Aluno Desconhecido') 
+                    : 'Toda a Turma';
+                
+                const resultado = `
+                    <h4 class="text-xl font-bold mb-3 text-info">Relatório de Ocorrências para Impressão</h4>
+                    <p><strong>Filtros:</strong> ${salaNome} (${alunoNome})</p>
+                    <p><strong>Período:</strong> ${dataInicial} a ${dataFinal}</p>
+                    <div class="mt-4 p-3 bg-dark-primary rounded-lg">
+                        <p class="font-semibold text-accent">Ocorrências Encontradas (Simulação):</p>
+                        <ul>
+                            <li>- Ocorrência #1234 (Comportamental) - Aluno A</li>
+                            <li>- Ocorrência #1235 (Pedagógica) - Aluno B</li>
+                            <li>- Ocorrência #1236 (Comportamental) - ${alunoNome}</li>
+                        </ul>
+                    </div>
+                `;
+                
+                document.getElementById('report-output').innerHTML = resultado;
+                document.getElementById('print-button-container').classList.remove('hidden');
+                relatorioGerado = true;
+                mostrarMensagem('Dados prontos para impressão.', 'success');
+            }, 1500);
+        }
+
+        // 4. LÓGICA DE IMPRESSÃO
+        window.imprimirRelatorio = function() {
+            if (!relatorioGerado) {
+                mostrarMensagem('Erro: Gere o relatório antes de imprimir.', 'danger');
+                return;
+            }
+            // window.print(); // Descomente para usar a função de impressão nativa do navegador
+            alert('Simulando a abertura da janela de impressão com as ocorrências filtradas.');
+        }
+    </script>
+    <style>
+         .form-input {
+            @apply w-full p-3 bg-white border border-gray-700 rounded-lg text-black focus:ring-info focus:border-info;
+        }
+    </style>
+</head>
+<body class="bg-dark-primary font-sans text-text-light min-h-screen">
+    
+    <div id="app-container" class="flex flex-col items-center justify-start p-4 md:p-8 min-h-screen">
+
+        <header class="w-full max-w-4xl text-center mb-8 mt-4">
+            <h1 class="text-3xl sm:text-4xl font-extrabold text-info leading-tight tracking-wider">
+                MÓDULO DE RELATÓRIOS
+            </h1>
+            <h2 class="text-xl sm:text-2xl text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
+                IMPRESSÃO DE OCORRÊNCIAS
+            </h2>
+            <div class="mt-4">
+                 <button type="button" onclick="window.location.href='/gestao_relatorio'"
+                        class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200 ease-in-out flex items-center justify-center space-x-2 mx-auto w-full max-w-xs">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z"></path></svg>
+                    <span>VOLTAR PARA O MENU RELATÓRIOS</span>
+                </button>
+            </div>
+        </header>
+
+        <div id="mensagem-status" class="hidden p-3 mb-4 text-sm font-medium text-white rounded-lg text-center w-full max-w-4xl" role="alert"></div>
+
+        <main class="w-full max-w-4xl flex-grow space-y-6">
+            
+            <div class="bg-dark-secondary p-6 rounded-xl shadow-2xl space-y-6">
+                <h3 class="text-xl font-bold border-b border-gray-600 pb-2 text-info">1. Filtros de Seleção</h3>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    
+                    <div>
+                        <label for="filter-sala" class="block text-sm font-medium text-gray-300 mb-1">Sala/Turma *:</label>
+                        <select id="filter-sala" class="form-input" required>
+                            <option value="">Carregando Salas...</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label for="filter-aluno" class="block text-sm font-medium text-gray-300 mb-1">Aluno (Opcional):</label>
+                        <select id="filter-aluno" class="form-input" disabled>
+                            <option value="">Selecione a Sala primeiro</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label for="filter-data-inicial" class="block text-sm font-medium text-gray-300 mb-1">Data Inicial *:</label>
+                        <input type="date" id="filter-data-inicial" class="form-input" required>
+                    </div>
+
+                    <div>
+                        <label for="filter-data-final" class="block text-sm font-medium text-gray-300 mb-1">Data Final *:</label>
+                        <input type="date" id="filter-data-final" class="form-input" required>
+                    </div>
+                </div>
+                
+                <button onclick="gerarRelatorio()" 
+                        class="w-full bg-danger hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 ease-in-out shadow-lg flex items-center justify-center space-x-2 transform hover:scale-[1.005]">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m-1 4h10a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2zm10-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3" />
+                    </svg>
+                    <span>BUSCAR OCORRÊNCIAS PARA IMPRESSÃO</span>
+                </button>
+            </div>
+
+            <div class="bg-dark-secondary p-6 rounded-xl shadow-2xl space-y-6">
+                 <h3 class="text-xl font-bold border-b border-gray-600 pb-2 text-info">2. Resultado e Impressão</h3>
+                
+                <div id="report-output" class="min-h-[150px] p-4 bg-dark-primary rounded-lg border border-gray-700">
+                    <p class="text-center text-gray-400 mt-4">As ocorrências encontradas para os filtros serão exibidas aqui.</p>
+                </div>
+
+                <div id="print-button-container" class="pt-4 border-t border-gray-700 hidden">
+                    <button onclick="imprimirRelatorio()" 
+                            class="w-full bg-accent hover:bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg transition duration-200 ease-in-out shadow-lg flex items-center justify-center space-x-2 transform hover:scale-[1.005]">
+                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24
