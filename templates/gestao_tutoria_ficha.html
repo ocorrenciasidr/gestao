@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ficha de Tutoria do Aluno</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script type="module">
+        // Importa apenas o necessário para simular dados e tipagem
+        import { Timestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+        // Variáveis globais de dados
+        let salasData = []; 
+        let alunosData = [];
+        
+        // Helper para lidar com erros de fetch
+        async function handleFetchResponse(url, context) {
+            const response = await fetch(url);
+            if (!response.ok) {
+                // Aqui você pode adicionar a lógica de mensagem de erro
+                // mostrarMensagem(`Erro ao buscar ${context}. Falha na API.`, 'danger');
+                throw new Error(`Falha no fetch de ${context}`);
+            }
+            return response.json();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSalas();
+        });
+
+
+        // 1. FILTRO SALA (Busca em /api/salas)
+        window.loadSalas = async function() {
+            const selectSala = document.getElementById('filter-sala');
+            selectSala.innerHTML = '<option value="">Carregando Salas...</option>';
+            try {
+                salasData = await handleFetchResponse('/api/salas', 'Salas');
+                selectSala.innerHTML = '<option value="">SELECIONE A SALA</option>';
+                salasData.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(s => { 
+                    selectSala.innerHTML += `<option value="${s.id}">${s.nome}</option>`; 
+                });
+            } catch (e) { 
+                selectSala.innerHTML = '<option value="">ERRO AO CARREGAR SALAS</option>';
+            }
+            loadAlunos();
+        }
+
+        // 2. FILTRO ALUNO (Busca em /api/alunos_por_sala/)
+        window.loadAlunos = async function() {
+            const salaId = document.getElementById('filter-sala').value;
+            const selectAluno = document.getElementById('filter-aluno');
+            
+            selectAluno.innerHTML = '<option value="">Selecione a Sala...</option>';
+            selectAluno.disabled = true;
+
+            if (salaId) {
+                try {
+                    alunosData = await handleFetchResponse(`/api/alunos_por_sala/${salaId}`, 'Alunos');
+                    selectAluno.innerHTML = '<option value="">SELECIONE O ALUNO</option>';
+                    alunosData.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(a => { 
+                        selectAluno.innerHTML += `<option value="${a.id}">${a.nome}</option>`; 
+                    });
+                    selectAluno.disabled = false;
+                } catch (error) { 
+                    selectAluno.innerHTML = '<option value="">ERRO AO CARREGAR ALUNOS</option>';
+                }
+            } else {
+                 selectAluno.innerHTML = '<option value="">SELECIONE O ALUNO</option>';
+            }
+            // Limpar/Resetar a ficha ao mudar de sala
+            document.getElementById('ficha-content').innerHTML = '<p class="text-center text-gray-400 mt-8">Selecione um aluno para carregar a ficha.</p>';
+        }
+        
+        // 3. CARREGAR DADOS DA FICHA (NOVO ENDPOINT GET)
+        window.loadAlunoData = async function() {
+             const alunoId = document.getElementById('filter-aluno').value;
+             const fichaContent = document.getElementById('ficha-content');
+             fichaContent.innerHTML = '<p class="text-center text-yellow-500 mt-8">Carregando Ficha...</p>';
+             
+             if (!alunoId) {
+                fichaContent.innerHTML = '<p class="text-center text-gray-400 mt-8">Selecione um aluno para carregar a ficha.</p>';
+                return;
+             }
+
+             try {
+                 // Endpoint necessário no Flask: /api/ficha_tutoria/<alunoId> (A ser implementado)
+                 const fichaData = await handleFetchResponse(`/api/ficha_tutoria/${alunoId}`, 'Ficha de Tutoria');
+                 
+                 // SIMULAÇÃO DE EXIBIÇÃO DA FICHA:
+                 fichaContent.innerHTML = `
+                    <div class="space-y-4">
+                        <h4 class="text-2xl font-bold text-indigo-400">Dados do Aluno</h4>
+                        <p class="text-lg"><strong>Nome:</strong> ${fichaData.aluno_nome || 'N/A'}</p>
+                        <p><strong>RA:</strong> ${fichaData.ra || 'N/A'}</p>
+                        <p><strong>Tutor(a):</strong> ${fichaData.tutor_nome || 'N/A'}</p>
+                        <p><strong>Sala:</strong> ${fichaData.sala_nome || 'N/A'}</p>
+                        
+                        <h4 class="text-2xl font-bold text-indigo-400 pt-4 border-t border-gray-600">Últimas Ocorrências</h4>
+                        ${fichaData.ocorrencias && fichaData.ocorrencias.length > 0 ? 
+                            fichaData.ocorrencias.map(o => `
+                                <div class="p-3 bg-dark-primary rounded-lg">
+                                    <p class="font-semibold text-sm">Data: ${o.data}</p>
+                                    <p class="text-xs">Descrição: ${o.descricao}</p>
+                                    <p class="text-xs text-red-400">Status: ${o.status}</p>
+                                </div>
+                            `).join('')
+                            : '<p>Nenhuma ocorrência registrada.</p>'}
+                            
+                        <button class="mt-6 w-full py-2 bg-accent hover:bg-emerald-600 rounded-lg font-semibold">Salvar/Atualizar Ficha</button>
+                    </div>
+                 `;
+                 
+             } catch (e) { 
+                fichaContent.innerHTML = '<p class="text-center text-red-500 mt-8">Erro ao carregar os dados da ficha.</p>';
+             }
+        }
+        
+        // 4. SALVAR FICHA (POST para /api/salvar_ficha)
+        window.salvarFicha = async function(event) {
+             event.preventDefault();
+             // Aqui você implementaria a coleta e envio dos dados da ficha
+             // try {
+             //    const response = await fetch('/api/salvar_ficha', { /* ... */ });
+             //    // ... (Tratamento de sucesso) ...
+             // } catch (e) { /* ... */ }
+             alert("Lógica de salvamento da Ficha de Tutoria (POST /api/salvar_ficha) deve ser implementada no Flask.");
+        }
+    </script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'dark-primary': '#0F172A', 
+                        'dark-secondary': '#1E293B', 
+                        'accent': '#10B981', 
+                        'secondary-accent': '#4F46E5', 
+                        'text-light': '#F8FAFC', 
+                        'danger': '#DC2626',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-dark-primary font-sans text-text-light min-h-screen">
+    
+    <div id="app-container" class="flex flex-col items-center justify-between p-4 md:p-8 min-h-screen">
+
+        <header class="w-full text-center mb-8 mt-4">
+            <h1 class="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-secondary-accent leading-tight tracking-wider">
+                MÓDULO DE GESTÃO DE TUTORIA
+            </h1>
+            <h2 class="text-xl sm:text-2xl text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
+                FICHA DE TUTORIA E PERFIL
+            </h2>
+             <div class="mt-4">
+                 <button type="button" onclick="window.location.href='/gestao_tutoria'"
+                        class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200 ease-in-out flex items-center justify-center space-x-2 mx-auto w-full max-w-xs">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z"></path></svg>
+                    <span>VOLTAR PARA O MENU DE TUTORIA</span>
+                </button>
+            </div>
+        </header>
+
+        <main class="w-full max-w-4xl flex-grow">
+            <form id="ficha-form" onsubmit="salvarFicha(event)" class="bg-dark-secondary p-6 rounded-xl shadow-2xl space-y-6">
+
+                <h3 class="text-xl font-bold border-b border-gray-600 pb-2 text-indigo-400">1. Seleção do Aluno</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    
+                    <div>
+                        <label for="filter-sala" class="block text-sm font-medium mb-1">Sala *:</label>
+                        <select id="filter-sala" class="form-input w-full p-2 bg-gray-700 rounded" onchange="loadAlunos()" required>
+                            <option value="">SELECIONE A SALA</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label for="filter-aluno" class="block text-sm font-medium mb-1">Aluno *:</label>
+                        <select id="filter-aluno" class="form-input w-full p-2 bg-gray-700 rounded" onchange="loadAlunoData()" disabled required>
+                            <option value="">SELECIONE O ALUNO</option>
+                        </select>
+                    </div>
+                </div>
+
+                <h3 class="text-xl font-bold border-b border-gray-600 pb-2 text-indigo-400 pt-4">2. Dados da Ficha</h3>
+                
+                <div id="ficha-content" class="bg-dark-primary p-4 rounded-lg min-h-[300px]">
+                    <p class="text-center text-gray-400 mt-8">Selecione um aluno para carregar a ficha.</p>
+                </div>
+            </form>
+
+        </main>
+        
+        <footer class="w-full text-center mt-10 p-4 text-gray-400 text-sm border-t border-gray-800">
+            <p class="mb-1 text-base font-medium">
+                DESENVOLVEDOR: MARCELO CARDES E LUIS FELIPE CARDES
+            </p>
+            <p class="text-xs font-light tracking-wide">
+                LICENCIADO COMO TESTE PARA E.E. PEI PROFESSORA IRENE DIAS
+            </p>
+        </footer>
+
+    </div>
+
+</body>
+</html>
