@@ -8,214 +8,220 @@
     <script src="https://cdn.tailwindcss.com"></script>
     
     <script>
-        // Configuração do tema escuro
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        'dark-primary': '#0F172A', 
-                        'dark-secondary': '#1E293B', 
-                        'accent': '#10B981', 
-                        'text-light': '#F8FAFC', 
-                        'input-bg': '#374151', 
-                        'danger': '#DC2626', 
-                    },
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                    },
-                }
+    // Configuração do tema escuro
+    tailwind.config = {
+        theme: {
+            extend: {
+                colors: {
+                    'dark-primary': '#0F172A',
+                    'dark-secondary': '#1E293B',
+                    'accent': '#10B981',
+                    'text-light': '#F8FAFC',
+                    'input-bg': '#374151',
+                    'danger': '#DC2626',
+                },
+                fontFamily: {
+                    sans: ['Inter', 'sans-serif'],
+                },
             }
         }
+    }
 
-        // Variáveis globais para armazenar os dados de lookup após o fetch
-        let funcionariosDataGlobal = [];
-        let alunosDataGlobal = [];
-        
-        document.addEventListener('DOMContentLoaded', () => {
-            carregarDadosDeLookup(); 
+    // Variáveis globais para armazenar os dados de lookup após o fetch
+    let funcionariosDataGlobal = [];
+    let alunosDataGlobal = [];
+
+    document.addEventListener('DOMContentLoaded', () => {
+        carregarDadosDeLookup();
+    });
+
+    // Funções Auxiliares
+    function mostrarMensagem(texto, tipo) {
+        const msgElement = document.getElementById('mensagem-status');
+        msgElement.textContent = texto;
+
+        msgElement.classList.remove('hidden', 'bg-success', 'bg-danger', 'bg-warning');
+
+        if (tipo === 'success') {
+            msgElement.classList.add('bg-accent');
+        } else if (tipo === 'danger') {
+            msgElement.classList.add('bg-danger');
+        } else if (tipo === 'warning') {
+            msgElement.classList.add('bg-warning');
+        } else {
+            msgElement.classList.add('bg-dark-secondary'); // Default para info
+        }
+
+        msgElement.classList.remove('hidden');
+        setTimeout(() => {
+            msgElement.classList.add('hidden');
+        }, 5000);
+    }
+
+    // LÓGICA DE CARREGAMENTO DE DADOS (USANDO ROTAS FLASK)
+    async function carregarDadosDeLookup() {
+        mostrarMensagem('Carregando dados de professores e salas...', 'warning');
+
+        try {
+            // 1. Fetch de Professores/Funcionários
+            const responseProfs = await fetch('/api/funcionarios');
+            if (!responseProfs.ok) throw new Error("Falha ao carregar Professores.");
+            funcionariosDataGlobal = await responseProfs.json();
+
+            // 2. Fetch de Salas (CORRIGIDO com melhor tratamento de erro)
+            const responseSalas = await fetch('/api/salas');
+            
+            if (!responseSalas.ok) {
+                // Read the detailed error message from the server (e.g., the Supabase 400 error description)
+                const errorText = await responseSalas.text(); 
+                throw new Error("Falha ao carregar Salas. Status: " + responseSalas.status + ". Detalhe: " + errorText.substring(0, 150) + "..."); 
+            }
+            
+            const salas = await responseSalas.json();
+            
+            // Preenche o HTML
+            preencherOpcoes(funcionariosDataGlobal, salas);
+            
+            // Adiciona Listeners
+            document.getElementById('sala').addEventListener('change', atualizarAlunos);
+            document.getElementById('aluno').addEventListener('change', preencherTutor);
+            
+            mostrarMensagem('Dados carregados com sucesso!', 'success');
+
+        } catch (error) {
+            console.error("Erro no carregamento de Lookup:", error.message);
+            mostrarMensagem('Erro ao carregar dados de lookup: ' + error.message, 'danger');
+        }
+    }
+
+    // Lógica de preenchimento (Adaptada)
+    function preencherOpcoes(professores, salas) {
+        // 1. Preencher Professor Responsável
+        const selectProfResp = document.getElementById('prof-responsavel');
+        selectProfResp.innerHTML = '<option value="" disabled selected>Selecione o Prof./Func.</option>';
+        professores.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(prof => {
+            selectProfResp.insertAdjacentHTML('beforeend', `<option value="${prof.id}">${prof.nome}</option>`);
         });
+        
+        // 2. Preencher Salas (CORRIGIDO: usando 'sala' em vez de 'nome_turma')
+        const selectSala = document.getElementById('sala');
+        selectSala.innerHTML = '<option value="" disabled selected>Selecione a Sala</option>';
+        salas.sort((a, b) => a.sala.localeCompare(b.sala)).forEach(sala => {
+            // Usamos o ID da sala como value e sala.sala como texto
+            selectSala.insertAdjacentHTML('beforeend', `<option value="${sala.id}">${sala.sala}</option>`);
+        });
+        
+        // Força a atualização inicial
+        atualizarAlunos();
+    }
 
-        // Funções Auxiliares
-        function mostrarMensagem(texto, tipo) {
-             const msgElement = document.getElementById('mensagem-status');
-             msgElement.textContent = texto;
-             
-             msgElement.classList.remove('hidden', 'bg-success', 'bg-danger', 'bg-warning');
- 
-             if (tipo === 'success') {
-                 msgElement.classList.add('bg-accent');
-             } else if (tipo === 'danger') {
-                 msgElement.classList.add('bg-danger');
-             } else if (tipo === 'warning') {
-                 msgElement.classList.add('bg-warning');
-             } else {
-                msgElement.classList.add('bg-dark-secondary'); // Default para info
-             }
- 
-             msgElement.classList.remove('hidden');
-             setTimeout(() => {
-                 msgElement.classList.add('hidden');
-             }, 5000);
-         }
- 
-        // LÓGICA DE CARREGAMENTO DE DADOS (USANDO ROTAS FLASK)
-        async function carregarDadosDeLookup() {
-            mostrarMensagem('Carregando dados de professores e salas...', 'warning');
+    async function atualizarAlunos() {
+        const selectedSalaId = document.getElementById('sala').value;
+        const selectAluno = document.getElementById('aluno');
+        selectAluno.innerHTML = '<option value="" disabled selected>Selecione o Aluno</option>';
+        document.getElementById('tutor').value = '';
+        selectAluno.disabled = true;
+
+        if (selectedSalaId) {
+            mostrarMensagem('Carregando alunos da sala...', 'info');
 
             try {
-                // 1. Fetch de Professores/Funcionários
-                const responseProfs = await fetch('/api/funcionarios');
-                if (!responseProfs.ok) throw new Error("Falha ao carregar Professores.");
-                funcionariosDataGlobal = await responseProfs.json();
-
-                // 2. Fetch de Salas
-                const responseSalas = await fetch('/api/salas');
-                if (!responseSalas.ok) throw new Error("Falha ao carregar Salas.");
-                const salas = await responseSalas.json();
+                // Fetch Alunos por Sala (ROTA CASCATA)
+                const response = await fetch(`/api/alunos_por_sala/${selectedSalaId}`);
+                if (!response.ok) throw new Error("Falha ao carregar alunos.");
+                alunosDataGlobal = await response.json(); // Array de {id, nome, tutor_id, tutor_nome}
                 
-                // Preenche o HTML
-                preencherOpcoes(funcionariosDataGlobal, salas);
-                
-                // Adiciona Listeners
-                document.getElementById('sala').addEventListener('change', atualizarAlunos);
-                document.getElementById('aluno').addEventListener('change', preencherTutor);
-                
-                mostrarMensagem('Dados carregados com sucesso!', 'success');
-
-            } catch (error) {
-                console.error("Erro no carregamento de Lookup:", error.message);
-                mostrarMensagem('Erro ao carregar dados de lookup: ' + error.message, 'danger');
-            }
-        }
-
-        // Lógica de preenchimento (Adaptada)
-        function preencherOpcoes(professores, salas) {
-            // 1. Preencher Professor Responsável
-            const selectProfResp = document.getElementById('prof-responsavel');
-            selectProfResp.innerHTML = '<option value="" disabled selected>Selecione o Prof./Func.</option>';
-            professores.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(prof => {
-                selectProfResp.insertAdjacentHTML('beforeend', `<option value="${prof.id}">${prof.nome}</option>`);
-            });
-            
-            // 2. Preencher Salas
-            const selectSala = document.getElementById('sala');
-            selectSala.innerHTML = '<option value="" disabled selected>Selecione a Sala</option>';
-            salas.sort((a, b) => a.sala.localeCompare(b.sala)).forEach(sala => {
-                // Usamos o ID da sala como value
-                selectSala.insertAdjacentHTML('beforeend', `<option value="${sala.id}">${sala.sala}</option>`);
-            });
-            
-            // Força a atualização inicial
-            atualizarAlunos();
-        }
-
-        async function atualizarAlunos() {
-            const selectedSalaId = document.getElementById('sala').value;
-            const selectAluno = document.getElementById('aluno');
-            selectAluno.innerHTML = '<option value="" disabled selected>Selecione o Aluno</option>';
-            document.getElementById('tutor').value = '';
-            selectAluno.disabled = true;
-
-            if (selectedSalaId) {
-                mostrarMensagem('Carregando alunos da sala...', 'info');
-
-                try {
-                    // Fetch Alunos por Sala (ROTA CASCATA)
-                    const response = await fetch(`/api/alunos_por_sala/${selectedSalaId}`);
-                    if (!response.ok) throw new Error("Falha ao carregar alunos.");
-                    alunosDataGlobal = await response.json(); // Array de {id, nome, tutor_id, tutor_nome}
-                    
-                    alunosDataGlobal.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(aluno => {
-                        const option = document.createElement('option');
-                        option.value = aluno.id; // ID do Aluno
-                        // Guarda o nome do tutor no data-attribute para preenchimento automático
-                        option.setAttribute('data-tutor', aluno.tutor_nome || 'Tutor Não Definido');
-                        option.textContent = aluno.nome;
-                        selectAluno.appendChild(option);
-                    });
-                    
-                    selectAluno.disabled = false;
-                    mostrarMensagem('', 'success'); // Limpa a mensagem
-                    
-                } catch (error) {
-                    console.error("Erro ao carregar alunos:", error.message);
-                    mostrarMensagem('Erro ao carregar alunos da sala.', 'danger');
-                }
-            }
-        }
-
-        function preencherTutor() {
-            const selectAluno = document.getElementById('aluno');
-            const selectedOption = selectAluno.options[selectAluno.selectedIndex];
-            const inputTutor = document.getElementById('tutor');
-
-            if (selectedOption && selectedOption.value !== "") {
-                const tutorNome = selectedOption.getAttribute('data-tutor') || 'Tutor Não Definido';
-                inputTutor.value = tutorNome;
-            } else {
-                inputTutor.value = '';
-            }
-        }
-
-        // LÓGICA DE SUBMISSÃO (CREATE) - USANDO ROTA FLASK/SUPABASE
-        async function submeterOcorrencia(event) {
-            event.preventDefault(); 
-            
-            const selectedAlunoId = document.getElementById('aluno').value;
-            const selectedSalaId = document.getElementById('sala').value;
-            const aluno = alunosDataGlobal.find(a => String(a.id) === selectedAlunoId) || {};
-            
-            const rawData = {
-                prof_id: document.getElementById('prof-responsavel').value,
-                sala_id: selectedSalaId,
-                aluno_id: selectedAlunoId,
-                descricao: document.getElementById('descricao-ocorrencia').value,
-                atendimento_professor: document.getElementById('atendimento-professor').value,
-                
-                solicitar_tutor: document.getElementById('solicitar-tutor').checked,
-                solicitar_coordenacao: document.getElementById('solicitar-coordenacao').checked,
-                solicitar_gestao: document.getElementById('solicitar-gestao').checked,
-                
-                // Campos de Display (Se o backend precisar para log ou tabela)
-                aluno_nome: aluno.nome,
-                tutor_nome: aluno.tutor_nome,
-            };
-            
-            // Validação
-            if (!rawData.prof_id || !rawData.sala_id || !rawData.aluno_id || !rawData.descricao || !rawData.atendimento_professor) {
-                 mostrarMensagem('Por favor, preencha todos os campos obrigatórios (marcados com *) antes de registrar a ocorrência.', 'danger');
-                 return;
-            }
-            
-            mostrarMensagem('Registrando ocorrência...', 'warning');
-
-            try {
-                // Rota POST /api/registrar_ocorrencia (No seu app.py)
-                const response = await fetch('/api/registrar_ocorrencia', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(rawData),
+                alunosDataGlobal.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(aluno => {
+                    const option = document.createElement('option');
+                    option.value = aluno.id; // ID do Aluno
+                    // Guarda o nome do tutor no data-attribute para preenchimento automático
+                    option.setAttribute('data-tutor', aluno.tutor_nome || 'Tutor Não Definido');
+                    option.textContent = aluno.nome;
+                    selectAluno.appendChild(option);
                 });
                 
-                const result = await response.json();
-
-                if (!response.ok) {
-                    throw new Error(result.error || 'Erro desconhecido ao registrar');
-                }
+                selectAluno.disabled = false;
+                mostrarMensagem('', 'success'); // Limpa a mensagem
                 
-                mostrarMensagem(result.message, 'success');
-                
-                // Limpar formulário após o envio
-                document.getElementById('ocorrencia-form').reset();
-                document.getElementById('tutor').value = ''; 
-                atualizarAlunos(); 
-
             } catch (error) {
-                console.error("Erro ao registrar a ocorrência:", error);
-                mostrarMensagem('Erro ao registrar a ocorrência. ' + error.message, 'danger');
+                console.error("Erro ao carregar alunos:", error.message);
+                mostrarMensagem('Erro ao carregar alunos da sala.', 'danger');
             }
         }
-    </script>
+    }
+
+    function preencherTutor() {
+        const selectAluno = document.getElementById('aluno');
+        const selectedOption = selectAluno.options[selectAluno.selectedIndex];
+        const inputTutor = document.getElementById('tutor');
+
+        if (selectedOption && selectedOption.value !== "") {
+            const tutorNome = selectedOption.getAttribute('data-tutor') || 'Tutor Não Definido';
+            inputTutor.value = tutorNome;
+        } else {
+            inputTutor.value = '';
+        }
+    }
+
+    // LÓGICA DE SUBMISSÃO (CREATE) - USANDO ROTA FLASK/SUPABASE
+    async function submeterOcorrencia(event) {
+        event.preventDefault();
+        
+        const selectedAlunoId = document.getElementById('aluno').value;
+        const selectedSalaId = document.getElementById('sala').value;
+        const aluno = alunosDataGlobal.find(a => String(a.id) === selectedAlunoId) || {};
+        
+        const rawData = {
+            prof_id: document.getElementById('prof-responsavel').value,
+            sala_id: selectedSalaId,
+            aluno_id: selectedAlunoId,
+            descricao: document.getElementById('descricao-ocorrencia').value,
+            atendimento_professor: document.getElementById('atendimento-professor').value,
+            
+            solicitar_tutor: document.getElementById('solicitar-tutor').checked,
+            solicitar_coordenacao: document.getElementById('solicitar-coordenacao').checked,
+            solicitar_gestao: document.getElementById('solicitar-gestao').checked,
+            
+            // Campos de Display (Se o backend precisar para log ou tabela)
+            aluno_nome: aluno.nome,
+            tutor_nome: aluno.tutor_nome,
+        };
+        
+        // Validação
+        if (!rawData.prof_id || !rawData.sala_id || !rawData.aluno_id || !rawData.descricao || !rawData.atendimento_professor) {
+            mostrarMensagem('Por favor, preencha todos os campos obrigatórios (marcados com *) antes de registrar a ocorrência.', 'danger');
+            return;
+        }
+        
+        mostrarMensagem('Registrando ocorrência...', 'warning');
+
+        try {
+            // Rota POST /api/registrar_ocorrencia (No seu app.py)
+            const response = await fetch('/api/registrar_ocorrencia', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(rawData),
+            });
+            
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Erro desconhecido ao registrar');
+            }
+            
+            mostrarMensagem(result.message, 'success');
+            
+            // Limpar formulário após o envio
+            document.getElementById('ocorrencia-form').reset();
+            document.getElementById('tutor').value = '';
+            atualizarAlunos();
+
+        } catch (error) {
+            console.error("Erro ao registrar a ocorrência:", error);
+            mostrarMensagem('Erro ao registrar a ocorrência. ' + error.message, 'danger');
+        }
+    }
+</script>
     <style>
         /* Estilos base para o formulário */
         .form-select, .form-input, .form-textarea {
@@ -357,3 +363,4 @@
 </body>
 
 </html>
+
