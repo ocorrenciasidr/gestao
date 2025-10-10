@@ -504,6 +504,7 @@ def api_ocorrencias_abertas():
 # ============================================================
 # 🔹 API: Buscar detalhes de uma ocorrência específica por ID
 # ============================================================
+# ROTA 10: API GET: Detalhe de Ocorrência (e Listagem Geral)
 @app.route('/api/ocorrencias', methods=['GET'])
 @app.route('/api/ocorrencias/<ocorrencia_id>', methods=['GET'])
 def api_get_ocorrencias(ocorrencia_id=None):
@@ -512,7 +513,7 @@ def api_get_ocorrencias(ocorrencia_id=None):
     Faz JOIN para incluir os nomes do Professor e da Sala no detalhe.
     """
     try:
-        # Campos necessários para o detalhe, incluindo JOINs
+        # Campos necessários para o detalhe, incluindo JOINs (Verifique o nome das colunas de atendimento!)
         select_query_detail = """
             numero, data_hora, descricao, atendimento_professor,
             atendimento_tutor, atendimento_coordenacao, atendimento_gestao,
@@ -534,10 +535,7 @@ def api_get_ocorrencias(ocorrencia_id=None):
                 data['professor_nome'] = data.get('professor_id', {}).get('nome', 'N/A')
                 data['sala_nome'] = data.get('sala_id', {}).get('sala', 'N/A')
                 
-                # O JavaScript ainda tentará usar o 'display-sala' e 'display-professor'
-                # Agora, ele terá os dados completos (professor_nome e sala_nome)
-                
-                # Remove os objetos JOIN brutos para limpeza
+                # Remove os objetos JOIN brutos (opcional, mas limpa o objeto)
                 del data['professor_id']
                 del data['sala_id']
             
@@ -550,7 +548,6 @@ def api_get_ocorrencias(ocorrencia_id=None):
     except Exception as e:
         logging.error(f"Erro ao buscar ocorrência de detalhe: {e}")
         return jsonify({"error": f"Falha ao buscar detalhes: {e}", "status": 500}), 500
-
         
 # ROTA 11: API GET: Listagem de Todos Alunos (Módulo Cadastro/Relatório)
 @app.route('/api/alunos', methods=['GET'])
@@ -1416,6 +1413,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
