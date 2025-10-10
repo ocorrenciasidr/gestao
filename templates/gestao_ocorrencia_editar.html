@@ -69,6 +69,7 @@
         if (!dataStr) return 'N/A';
         try {
             const dt = new Date(dataStr);
+            // NOTA: A rota Flask quebra a data ISO. Usar date.toLocalString é mais seguro aqui.
             return dt.toLocaleDateString('pt-BR') + ' ' + dt.toLocaleTimeString('pt-BR');
         } catch {
             return dataStr;
@@ -103,21 +104,23 @@
     function preencherFormulario(data) {
         // Campos de Visualização
         document.getElementById('display-aluno').value = data.aluno_nome || 'N/A';
-        document.getElementById('display-sala').value = data.sala_id || 'N/A'; // Assumindo que o Flask envia o ID da sala, mas o ideal seria o nome
+        document.getElementById('display-sala').value = data.sala_id || 'N/A'; // Usando o ID da Sala
         document.getElementById('display-tutor').value = data.tutor_nome || 'N/A';
         document.getElementById('display-registro').value = formatarDataHora(data.data_hora);
         
         // Campos de Edição/Visualização
         document.getElementById('descricao-ocorrencia').value = data.descricao || '';
         document.getElementById('atendimento-professor').value = data.atendimento_professor || '';
+        
+        // Campos de Atendimento (Assumindo que as colunas são: atendimento_tutor e dt_atendimento_tutor)
         document.getElementById('atendimento-tutor').value = data.atendimento_tutor || '';
         document.getElementById('atendimento-coordenacao').value = data.atendimento_coordenacao || '';
         document.getElementById('atendimento-gestao').value = data.atendimento_gestao || '';
 
         // Labels de status (preenchido/não preenchido)
-        document.getElementById('status-tutor').textContent = data.atendimento_tutor ? 'ATENDIDO' : 'PENDENTE';
-        document.getElementById('status-coordenacao').textContent = data.atendimento_coordenacao ? 'ATENDIDO' : 'PENDENTE';
-        document.getElementById('status-gestao').textContent = data.atendimento_gestao ? 'ATENDIDO' : 'PENDENTE';
+        document.getElementById('status-tutor').textContent = data.dt_atendimento_tutor ? 'ATENDIDO' : 'PENDENTE';
+        document.getElementById('status-coordenacao').textContent = data.dt_atendimento_coordenacao ? 'ATENDIDO' : 'PENDENTE';
+        document.getElementById('status-gestao').textContent = data.dt_atendimento_gestao ? 'ATENDIDO' : 'PENDENTE';
     }
 
     function configurarModo(modo) {
