@@ -448,38 +448,6 @@ def api_get_agendamentos_pendentes(professor_id):
         return jsonify({"error": f"Erro ao buscar agendamentos pendentes: {e}", "status": 500}), 500
 
 # ROTA 10: API GET: Listagem de Todas Ocorrências (Módulo Ocorrência)
-@app.route('/api/ocorrencias', methods=['GET'])
-def api_get_ocorrencias():
-    """
-    Busca todas as ocorrências registradas na tabela 'ocorrencias'.
-    Ajustado para ordenar por 'data_hora', que causava erro de Bad Request (400) no Supabase.
-    """
-    try:
-        # Busca com select('*') e ordena pelo nome da coluna 'data_hora'
-        response = supabase.table('ocorrencias').select('*').order('data_hora', desc=True).execute() 
-        ocorrencias = handle_supabase_response(response)
-        
-        return jsonify(ocorrencias)
-    except Exception as e:
-        # Retorna o erro 500 para o frontend
-        logging.error(f"Erro ao buscar ocorrências: {e}")
-        return jsonify({"error": f"Falha ao buscar ocorrências: {e}", "status": 500}), 500
-
-from flask import jsonify
-
-@app.route("/api/ocorrencias/<int:ocorrencia_id>")
-def api_ocorrencia_detalhe(ocorrencia_id):
-    try:
-        supabase = conectar_supabase()
-        resp = supabase.table("ocorrencias").select("*").eq("id", ocorrencia_id).execute()
-        data = resp.data
-        if not data:
-            return jsonify({"error": "Ocorrência não encontrada"}), 404
-        return jsonify(data[0])  # Retorna o registro único
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
 @app.route('/api/ocorrencias_abertas', methods=['GET'])
 def api_ocorrencias_abertas():
     try:
@@ -1448,6 +1416,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
