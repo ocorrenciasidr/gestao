@@ -434,14 +434,20 @@ def api_get_agendamentos_pendentes(professor_id):
 # ROTA 10: API GET: Listagem de Todas Ocorrências (Módulo Ocorrência)
 @app.route('/api/ocorrencias', methods=['GET'])
 def api_get_ocorrencias():
+    """
+    Busca todas as ocorrências registradas na tabela 'ocorrencias'.
+    Ajustado para ordenar por 'data_hora', que causava erro de Bad Request (400) no Supabase.
+    """
     try:
-        # Tabela corrigida: ocorrencias
+        # Busca com select('*') e ordena pelo nome da coluna 'data_hora'
         response = supabase.table('ocorrencias').select('*').order('data_hora', desc=True).execute() 
         ocorrencias = handle_supabase_response(response)
         
         return jsonify(ocorrencias)
     except Exception as e:
-        return jsonify({"error": f"Erro ao buscar ocorrências: {e}", "status": 500}), 500
+        # Retorna o erro 500 para o frontend
+        logging.error(f"Erro ao buscar ocorrências: {e}")
+        return jsonify({"error": f"Falha ao buscar ocorrências: {e}", "status": 500}), 500
 
 # ROTA 11: API GET: Listagem de Todos Alunos (Módulo Cadastro/Relatório)
 @app.route('/api/alunos', methods=['GET'])
@@ -1254,6 +1260,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
