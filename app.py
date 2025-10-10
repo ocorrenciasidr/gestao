@@ -532,6 +532,28 @@ def api_ocorrencias_abertas():
         # Erro detalhado para logs, caso ainda haja falha
         logging.error(f"Erro CRÍTICO ao buscar ocorrências abertas: {e}")
         return jsonify({"error": f"Erro interno ao carregar a lista: Falha no JOIN. Detalhe: {e}", "status": 500}), 500
+
+# ============================================================
+# 🔹 API: Buscar detalhes de uma ocorrência específica por ID
+# ============================================================
+@app.route("/api/ocorrencias/<int:ocorrencia_id>", methods=["GET"])
+def api_obter_ocorrencia(ocorrencia_id):
+    try:
+        supabase = conectar_supabase()
+        if not supabase:
+            return jsonify({"error": "Falha ao conectar ao banco de dados"}), 500
+
+        resposta = supabase.table("ocorrencias").select("*").eq("id", ocorrencia_id).execute()
+
+        if not resposta.data:
+            return jsonify({"error": "Ocorrência não encontrada"}), 404
+
+        # Retorna o primeiro (e único) registro encontrado
+        return jsonify(resposta.data[0]), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
         
 # ROTA 11: API GET: Listagem de Todos Alunos (Módulo Cadastro/Relatório)
 @app.route('/api/alunos', methods=['GET'])
@@ -1397,6 +1419,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
