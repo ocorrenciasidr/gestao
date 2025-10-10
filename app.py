@@ -311,6 +311,37 @@ def api_get_alunos_por_sala(sala_id):
         logging.error(f"Erro ao buscar alunos por sala: {e}")
         return jsonify({"error": f"Erro ao buscar alunos por sala: {e}", "status": 500}), 500
 
+# ROTA 3.1: API GET — Lista de Tutores (funcionários com is_tutor = True)
+@app.route('/api/tutores', methods=['GET'])
+def api_get_tutores():
+    """
+    Retorna todos os funcionários cadastrados como tutores (is_tutor = True),
+    incluindo id e nome, para uso em filtros e seletores do front-end.
+    """
+    try:
+        # Busca todos os funcionários marcados como tutor
+        response = (
+            supabase.table('d_funcionarios')
+            .select('id, nome, email, funcao')
+            .eq('is_tutor', True)
+            .order('nome')
+            .execute()
+        )
+        tutores_raw = handle_supabase_response(response)
+
+        # Monta o JSON final
+        tutores = [{
+            "id": str(t["id"]),
+            "nome": t["nome"],
+            "email": t.get("email", ""),
+            "funcao": t.get("funcao", "")
+        } for t in tutores_raw]
+
+        return jsonify(tutores)
+
+    except Exception as e:
+        logging.error(f"Erro ao buscar tutores: {e}")
+        return jsonify({"error": f"Erro ao buscar tutores: {e}", "status": 500}), 500
 
 # ROTA 4: API GET: Listagem de Alunos por Tutor (Filtro Cascata)
 @app.route('/api/alunos_por_tutor/<tutor_id>', methods=['GET'])
@@ -1204,6 +1235,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
