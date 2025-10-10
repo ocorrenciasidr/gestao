@@ -8,6 +8,7 @@ from supabase import create_client, Client
 import os # Importar para usar os.urandom.hex
 import json
 from datetime import datetime
+from flask import jsonify
 
 # Configuração de Logs
 logging.basicConfig(level=logging.INFO)
@@ -464,12 +465,20 @@ def api_get_ocorrencias():
         logging.error(f"Erro ao buscar ocorrências: {e}")
         return jsonify({"error": f"Falha ao buscar ocorrências: {e}", "status": 500}), 500
 
+from flask import jsonify
+
 @app.route("/api/ocorrencias/<int:ocorrencia_id>")
-def get_ocorrencia(ocorrencia_id):
-    data = supabase.table("ocorrencias").select("*").eq("id", ocorrencia_id).execute()
-    if not data.data:
-        return jsonify({"error": "Ocorrência não encontrada"}), 404
-    return jsonify(data.data[0])
+def api_ocorrencia_detalhe(ocorrencia_id):
+    try:
+        supabase = conectar_supabase()
+        resp = supabase.table("ocorrencias").select("*").eq("id", ocorrencia_id).execute()
+        data = resp.data
+        if not data:
+            return jsonify({"error": "Ocorrência não encontrada"}), 404
+        return jsonify(data[0])  # Retorna o registro único
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route('/api/ocorrencias_abertas', methods=['GET'])
 def api_ocorrencias_abertas():
@@ -1388,6 +1397,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
