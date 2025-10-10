@@ -34,15 +34,24 @@ app = Flask(__name__, template_folder='templates')
 
 # Função auxiliar para tratar a resposta do Supabase
 def handle_supabase_response(response):
-    """Verifica erros na resposta do Supabase e retorna os dados."""
-    if response.data:
-        return response.data
-    logging.error(f"Erro no Supabase: {response.error}")
-    # PGRST301 é o código para "Nenhuma linha encontrada" - tratamos como lista vazia
-    if response.error and response.error.code == 'PGRST301': 
+    """
+    Retorna os dados de uma resposta Supabase, tratando erros e estruturas diferentes.
+    Compatível com o novo cliente supabase-py.
+    """
+    if not response:
         return []
-    # Se for outro erro, lançamos uma exceção
-    raise Exception(response.error.message if response.error else "Erro desconhecido no Supabase")
+    
+    # Nova versão do supabase-py retorna .data
+    if hasattr(response, "data"):
+        return response.data or []
+
+    # Antiga estrutura
+    if isinstance(response, dict) and "data" in response:
+        return response.get("data") or []
+
+    # Caso algo diferente
+    return []
+
 
 # =================================================================
 # ROTAS DO FRONT-END (Renderiza as páginas HTML)
@@ -1235,6 +1244,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
