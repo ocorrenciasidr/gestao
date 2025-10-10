@@ -52,6 +52,21 @@ def handle_supabase_response(response):
     # Caso algo diferente
     return []
 
+# =================================================================
+# FUNÇÕES AUXILIARES
+# =================================================================
+
+# Função Auxiliar para formatar data/hora (Necessário para o Brasil)
+def formatar_data_hora(data_str):
+    if not data_str:
+        return 'N/A'
+    try:
+        # Supabase retorna ISO format (ex: "2023-10-27T14:30:00+00:00")
+        dt_obj = datetime.fromisoformat(data_str.replace('Z', '+00:00'))
+        # Formata para um formato brasileiro legível
+        return dt_obj.strftime("%d/%m/%Y %H:%M:%S")
+    except Exception:
+        return data_str
 
 # =================================================================
 # ROTAS DO FRONT-END (Renderiza as páginas HTML)
@@ -448,6 +463,61 @@ def api_get_ocorrencias():
         # Retorna o erro 500 para o frontend
         logging.error(f"Erro ao buscar ocorrências: {e}")
         return jsonify({"error": f"Falha ao buscar ocorrências: {e}", "status": 500}), 500
+
+
+# ROTA 10.1: API GET: Listagem de Ocorrências Abertas (NOVA ROTA DE LISTAGEM)
+@app.route('/api/ocorrencias_abertas', methods=['GET'])
+def api_ocorrencias_abertas():
+    try:
+        # Busca a ocorrência e faz JOIN com professor e sala para obter os nomes.
+        # Também busca os flags de solicitação de atendimento.
+        response = supabase.table('ocorrencias').select(
+            """
+            id, 
+            data_hora, 
+            status, 
+            aluno_nome,
+            tutor_nome,
+            solicitado_tutor,
+            solicitado_coordenacao,
+            solicitado_gestao,
+            
+            professor_id(nome), 
+            sala_id(nome)        
+            """
+        ).eq('status', 'Aberta').order('data_hora', desc=True).execute()
+
+        ocorrencias_data = response.data 
+        
+        # Processa os dados para a forma final (desmembrando os JOINS e formatando)
+        ocorrencias = []
+        for item in ocorrencias_data:
+            ocorrencia = {
+                "id": item.get('id'),
+                "status": item.get('status'),
+                
+                "professor_nome": item.get('professor_id', {}).get('nome', 'N/A'),
+                "sala_nome": item.get('sala_id', {}).get('nome', 'N/A'),
+                
+                "aluno_nome": item.get('aluno_nome', 'N/A'),
+                "tutor_nome": item.get('tutor_nome', 'N/A'),
+                
+                # Campos de solicitação
+                "solicitado_tutor": item.get('solicitado_tutor', False),
+                "solicitado_coordenacao": item.get('solicitado_coordenacao', False),
+                "solicitado_gestao": item.get('solicitado_gestao', False),
+                
+                # Formatação da Data/Hora
+                "data_hora": formatar_data_hora(item.get('data_hora')), 
+            }
+            ocorrencias.append(ocorrencia)
+
+        return jsonify(ocorrencias), 200
+
+    except Exception as e:
+        # Erro detalhado que pode ser verificado no log do Render
+        logging.error(f"Erro ao buscar ocorrências abertas: {e}")
+        return jsonify({"error": f"Erro interno ao carregar a lista: Verifique as Foreign Keys do Supabase (Professor/Sala): {e}", "status": 500}), 500
 
 # ROTA 11: API GET: Listagem de Todos Alunos (Módulo Cadastro/Relatório)
 @app.route('/api/alunos', methods=['GET'])
@@ -1274,6 +1344,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
