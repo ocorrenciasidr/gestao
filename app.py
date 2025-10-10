@@ -276,14 +276,16 @@ def api_get_alunos_por_sala(sala_id):
     Retorna todos os alunos de uma sala,
     incluindo o nome do tutor (d_funcionarios),
     usando a relação direta tutor_id -> d_funcionarios.id.
+    CORREÇÃO APLICADA: Usa 'sala_id' e 'tutor_id' para corresponder ao esquema do usuário.
     """
     try:
         sala_id_bigint = int(sala_id)
 
         # 1️⃣ Busca os alunos da sala
+        # CORREÇÃO: Usando 'sala_id' no filtro e 'tutor_id' na seleção
         response_alunos = (
             supabase.table('d_alunos')
-            .select('id, nome, tutor_id')
+            .select('id, nome, tutor_id') 
             .eq('sala_id', sala_id_bigint)
             .order('nome')
             .execute()
@@ -305,12 +307,13 @@ def api_get_alunos_por_sala(sala_id):
         # 4️⃣ Monta o JSON final combinando aluno + tutor
         alunos = []
         for a in alunos_raw:
-            tutor_id_str = str(a['tutor_id']) if a['tutor_id'] else None
+            # CORREÇÃO: Usando 'tutor_id' para buscar o ID do tutor
+            tutor_id_str = str(a['tutor_id']) if a.get('tutor_id') else None
             tutor_nome = tutores_dict.get(tutor_id_str, 'Tutor Não Definido')
             alunos.append({
                 "id": str(a['id']),
                 "nome": a['nome'],
-                "tutor_id": tutor_id_str,
+                "tutor_id": tutor_id_str, 
                 "tutor_nome": tutor_nome
             })
 
@@ -319,6 +322,7 @@ def api_get_alunos_por_sala(sala_id):
     except Exception as e:
         logging.error(f"Erro ao buscar alunos por sala: {e}")
         return jsonify({"error": f"Erro ao buscar alunos por sala: {e}", "status": 500}), 500
+
 
 # ROTA 3.1: API GET — Lista de Tutores (funcionários com is_tutor = True)
 @app.route('/api/tutores', methods=['GET'])
@@ -357,7 +361,8 @@ def api_get_tutores():
 def api_get_alunos_por_tutor(tutor_id):
     try:
         tutor_id_bigint = int(tutor_id) 
-        response = supabase.table('d_alunos').select('id, nome').eq('fk_tutor_id', tutor_id_bigint).order('nome').execute()
+        # CORREÇÃO: Usando 'tutor_id' na tabela d_alunos
+        response = supabase.table('d_alunos').select('id, nome').eq('tutor_id', tutor_id_bigint).order('nome').execute()
         alunos = [{"id": str(a['id']), "nome": a['nome']} for a in handle_supabase_response(response)]
         return jsonify(alunos)
     except Exception as e:
@@ -733,8 +738,9 @@ def api_cadastrar_aluno():
         novo_aluno = {
             "ra": ra,
             "nome": nome,
-            "fk_sala_id": sala_id_bigint,
-            "fk_tutor_id": tutor_id_bigint,
+            # CORREÇÃO: Usando 'sala_id' e 'tutor_id'
+            "sala_id": sala_id_bigint, 
+            "tutor_id": tutor_id_bigint,
         }
         
         response = supabase.table('d_alunos').insert(novo_aluno).execute()
@@ -1124,10 +1130,6 @@ def api_vincular_tutor_aluno():
     if not tutor_id or not vinculos:
         return jsonify({"error": "Dados de tutor e vínculos são obrigatórios.", "status": 400}), 400
     
-    # A lógica deve percorrer todos os alunos da sala e:
-    # 1. Se o aluno foi marcado: Atualizar fk_tutor_id para o tutor_id enviado.
-    # 2. Se o aluno foi desmarcado: Atualizar fk_tutor_id para NULL.
-    
     try:
         tutor_id_bigint = int(tutor_id)
         
@@ -1139,20 +1141,23 @@ def api_vincular_tutor_aluno():
 
         # Lógica de desvinculação (para todos os alunos da sala que NÃO foram marcados)
         # 1. Busca todos os alunos da sala.
-        alunos_na_sala_raw = supabase.table('d_alunos').select('id').eq('fk_sala_id', sala_id).execute()
+        # CORREÇÃO: Usando 'sala_id' para filtrar
+        alunos_na_sala_raw = supabase.table('d_alunos').select('id').eq('sala_id', sala_id).execute()
         alunos_na_sala_ids = [str(a['id']) for a in handle_supabase_response(alunos_na_sala_raw)]
         
         # 2. IDs que precisam ser desvinculados (estavam na sala, mas não foram marcados)
         alunos_a_desvincular_ids = [a_id for a_id in alunos_na_sala_ids if a_id not in alunos_a_vincular_ids]
         
         # 3. Executa as atualizações
-        # Desvincular (seta fk_tutor_id para NULL)
+        # Desvincular (seta tutor_id para NULL)
         if alunos_a_desvincular_ids:
-             supabase.table('d_alunos').update({'fk_tutor_id': None}).in_('id', [int(id) for id in alunos_a_desvincular_ids]).execute()
+             # CORREÇÃO: Usando 'tutor_id' para a coluna
+             supabase.table('d_alunos').update({'tutor_id': None}).in_('id', [int(id) for id in alunos_a_desvincular_ids]).execute()
             
-        # Vincular (seta fk_tutor_id para o novo tutor_id)
+        # Vincular (seta tutor_id para o novo tutor_id)
         if alunos_a_vincular_ids:
-             supabase.table('d_alunos').update({'fk_tutor_id': tutor_id_bigint}).in_('id', [int(id) for id in alunos_a_vincular_ids]).execute()
+             # CORREÇÃO: Usando 'tutor_id' para a coluna
+             supabase.table('d_alunos').update({'tutor_id': tutor_id_bigint}).in_('id', [int(id) for id in alunos_a_vincular_ids]).execute()
 
         return jsonify({"message": f"Vínculos de tutoria da Sala {sala_id} atualizados com sucesso.", "status": 200}), 200
         
@@ -1244,6 +1249,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
