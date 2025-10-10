@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestão de Ocorrências Abertas</title>
+    <title>Editar Ocorrência</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
     // Configuração do tema escuro
@@ -13,12 +13,13 @@
                 colors: {
                     'dark-primary': '#0F172A',
                     'dark-secondary': '#1E293B',
-                    'accent': '#10B981', // Cor verde/accent
+                    'accent': '#10B981',
                     'text-light': '#F8FAFC',
                     'danger': '#DC2626',
-                    'tutor-color': '#007ACC', // Azul para Tutor
-                    'coord-color': '#F59E0B', // Amarelo para Coordenação
-                    'gestao-color': '#EF4444', // Vermelho para Gestão
+                    'input-bg': '#374151',
+                    'tutor-color': '#007ACC', 
+                    'coord-color': '#F59E0B', 
+                    'gestao-color': '#EF4444', 
                 },
                 fontFamily: {
                     sans: ['Inter', 'sans-serif'],
@@ -27,10 +28,24 @@
         }
     }
 
-    document.addEventListener('DOMContentLoaded', carregarOcorrencias);
-
-    // Variável para a senha de edição/exclusão (MOCK)
+    // Variáveis de estado e constantes
+    let ocorrenciaDataGlobal = {};
+    let nivelAtendimento = null; // 'tutor', 'coordenacao', 'gestao'
     const GESTAO_SENHA_MOCK = 'idrgestao';
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const id = urlParams.get('id');
+        const modo = urlParams.get('modo'); // 'editar', 'visualizar', 'atendimento'
+        nivelAtendimento = urlParams.get('nivel'); // 'tutor', 'coordenacao', 'gestao'
+
+        if (!id) {
+            mostrarMensagem("ID da ocorrência não encontrado na URL.", 'danger');
+            return;
+        }
+
+        carregarDetalhesOcorrencia(id, modo);
+    });
 
     // --- FUNÇÕES AUXILIARES ---
 
@@ -50,166 +65,172 @@
         setTimeout(() => { msgElement.classList.add('hidden'); }, 5000);
     }
     
-    // Renderiza a coluna de Ações (Lupa, Lápis, T, C, G)
-    function renderizarAcoes(ocorrencia) {
-        const id = ocorrencia.id;
-        
-        // 1. Botões fixos (Lupa/Lápis)
-        let html = `
-            <div class="flex items-center space-x-3">
-                <!-- LUPA (Visualizar Detalhes - MODO VIEW) -->
-                <a href="gestao_ocorrencia_editar.html?id=${id}&modo=visualizar" title="Visualizar Detalhes"
-                    class="text-gray-400 hover:text-accent transition duration-150">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                </a>
-                <!-- LÁPIS (Edição Completa - Requer Senha de Gestão) -->
-                <a href="#" onclick="abrirModalSenhaEdicao('${id}')" title="Editar Ocorrência (Acesso Gestão)"
-                    class="text-accent hover:text-green-400 transition duration-150">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-9-5l5-5m-5 5l5 5"></path></svg>
-                </a>
-        `;
-
-        // 2. Indicadores de Atendimento (T, C, G) - AGORA SÃO LINKS DIRETOS
-        let indicadores = '';
-        if (ocorrencia.solicitado_tutor) {
-            indicadores += `<a href="gestao_ocorrencia_editar.html?id=${id}&modo=atendimento&nivel=tutor" title="Atendimento Pendente do Tutor"
-                            class="bg-tutor-color/20 text-tutor-color text-xs font-bold px-2 py-1 rounded-full border border-tutor-color hover:bg-tutor-color hover:text-white transition">T</a>`;
+    function formatarDataHora(dataStr) {
+        if (!dataStr) return 'N/A';
+        try {
+            const dt = new Date(dataStr);
+            return dt.toLocaleDateString('pt-BR') + ' ' + dt.toLocaleTimeString('pt-BR');
+        } catch {
+            return dataStr;
         }
-        if (ocorrencia.solicitado_coordenacao) {
-            indicadores += `<a href="gestao_ocorrencia_editar.html?id=${id}&modo=atendimento&nivel=coordenacao" title="Atendimento Pendente da Coordenação"
-                            class="bg-coord-color/20 text-coord-color text-xs font-bold px-2 py-1 rounded-full border border-coord-color hover:bg-coord-color hover:text-white transition">C</a>`;
-        }
-        if (ocorrencia.solicitado_gestao) {
-            indicadores += `<a href="gestao_ocorrencia_editar.html?id=${id}&modo=atendimento&nivel=gestao" title="Atendimento Pendente da Gestão"
-                            class="bg-gestao-color/20 text-gestao-color text-xs font-bold px-2 py-1 rounded-full border border-gestao-color hover:bg-gestao-color hover:text-white transition">G</a>`;
-        }
-
-        if (indicadores) {
-            html += `<div class="ml-4 space-x-2">${indicadores}</div>`;
-        }
-        
-        html += `</div>`;
-        return html;
     }
-
 
     // --- LÓGICA DE CARREGAMENTO ---
 
-    async function carregarOcorrencias() {
-        mostrarMensagem('Carregando ocorrências abertas...', 'info');
-        const tabelaCorpo = document.getElementById('ocorrencias-corpo');
-        tabelaCorpo.innerHTML = ''; 
-
+    async function carregarDetalhesOcorrencia(id, modo) {
+        mostrarMensagem('Carregando detalhes da ocorrência...', 'info');
         try {
-            const response = await fetch('/api/ocorrencias_abertas');
+            // Busca os detalhes da ocorrência (agora na ROTA 10)
+            const response = await fetch(`/api/ocorrencias/${id}`);
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.error || "Falha ao carregar ocorrências.");
+                throw new Error(errorData.error || "Falha ao carregar detalhes.");
             }
-            const ocorrencias = await response.json();
-            
-            if (ocorrencias.length === 0) {
-                tabelaCorpo.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-gray-400">Nenhuma ocorrência aberta encontrada.</td></tr>`;
-                mostrarMensagem('Nenhuma ocorrência aberta.', 'info');
-                return;
-            }
+            // A rota detalhe retorna o objeto único
+            ocorrenciaDataGlobal = await response.json(); 
 
-            ocorrencias.forEach(ocorrencia => {
-                const row = `
-                    <tr class="hover:bg-dark-secondary/50 transition duration-150">
-                        <td class="p-3 text-sm font-medium text-text-light">${ocorrencia.id}</td>
-                        <td class="p-3 text-sm text-gray-300">${ocorrencia.data_hora}</td>
-                        <td class="p-3 text-sm text-gray-300">${ocorrencia.aluno_nome}</td>
-                        <td class="p-3 text-sm text-gray-300">${ocorrencia.sala_nome}</td>
-                        <td class="p-3 text-sm text-gray-300">${ocorrencia.professor_nome}</td>
-                        <td class="p-3 text-sm text-gray-300">${ocorrencia.tutor_nome}</td>
-                        <td class="p-3 text-sm whitespace-nowrap">${renderizarAcoes(ocorrencia)}</td>
-                    </tr>
-                `;
-                tabelaCorpo.insertAdjacentHTML('beforeend', row);
-            });
+            preencherFormulario(ocorrenciaDataGlobal);
+            configurarModo(modo);
 
-            mostrarMensagem('Ocorrências carregadas com sucesso!', 'success');
+            mostrarMensagem('Detalhes carregados com sucesso!', 'success');
 
         } catch (error) {
-            console.error("Erro ao carregar lista:", error);
-            mostrarMensagem('Erro ao carregar a lista: ' + error.message, 'danger');
+            console.error("Erro ao carregar detalhes:", error);
+            mostrarMensagem('Erro ao carregar detalhes: ' + error.message, 'danger');
         }
     }
-    
-    // --- LÓGICA DE MODAL DE ACESSO (APENAS PARA O LÁPIS) ---
 
-    // Função para abrir o modal de senha (só chamada pelo LÁPIS)
-    function abrirModalSenhaEdicao(ocorrenciaId) {
-        const modal = document.getElementById('modal-overlay');
-        const inputSenha = document.getElementById('input-senha');
+    function preencherFormulario(data) {
+        // Campos de Visualização
+        document.getElementById('display-aluno').value = data.aluno_nome || 'N/A';
+        document.getElementById('display-sala').value = data.sala_id || 'N/A'; // Assumindo que o Flask envia o ID da sala, mas o ideal seria o nome
+        document.getElementById('display-tutor').value = data.tutor_nome || 'N/A';
+        document.getElementById('display-registro').value = formatarDataHora(data.data_hora);
         
-        // Passa o ID da Ocorrência para a função de validação
-        inputSenha.setAttribute('data-id', ocorrenciaId);
-        
-        // Atualiza a mensagem do modal para edição completa
-        document.getElementById('modal-titulo').textContent = 'Edição Completa (Acesso Gestão)';
-        document.getElementById('modal-texto').textContent = `Para editar todos os campos (Lápis) da Ocorrência ${ocorrenciaId}, insira a senha de gestão:`;
-        
-        modal.classList.remove('hidden');
-        inputSenha.focus();
+        // Campos de Edição/Visualização
+        document.getElementById('descricao-ocorrencia').value = data.descricao || '';
+        document.getElementById('atendimento-professor').value = data.atendimento_professor || '';
+        document.getElementById('atendimento-tutor').value = data.atendimento_tutor || '';
+        document.getElementById('atendimento-coordenacao').value = data.atendimento_coordenacao || '';
+        document.getElementById('atendimento-gestao').value = data.atendimento_gestao || '';
+
+        // Labels de status (preenchido/não preenchido)
+        document.getElementById('status-tutor').textContent = data.atendimento_tutor ? 'ATENDIDO' : 'PENDENTE';
+        document.getElementById('status-coordenacao').textContent = data.atendimento_coordenacao ? 'ATENDIDO' : 'PENDENTE';
+        document.getElementById('status-gestao').textContent = data.atendimento_gestao ? 'ATENDIDO' : 'PENDENTE';
     }
 
-    // Função para validar a senha e redirecionar (CHAMADA PELO MODAL)
-    function validarSenha(event) {
+    function configurarModo(modo) {
+        const fields = ['descricao-ocorrencia', 'atendimento-professor', 'atendimento-tutor', 'atendimento-coordenacao', 'atendimento-gestao'];
+        const btnSalvarAtendimento = document.getElementById('btn-salvar-atendimento');
+        const btnSalvarEdicao = document.getElementById('btn-salvar-edicao');
+        
+        // Desabilita todos os campos por padrão
+        fields.forEach(id => {
+            const el = document.getElementById(id);
+            el.readOnly = true;
+            el.classList.remove('input-editable');
+        });
+        btnSalvarAtendimento.classList.add('hidden'); 
+        btnSalvarEdicao.classList.add('hidden');
+
+        // MODO VISUALIZAR
+        if (modo === 'visualizar') {
+            document.getElementById('titulo-edicao').textContent = 'Visualização Completa';
+        } 
+        
+        // MODO EDIÇÃO COMPLETA (LÁPIS)
+        else if (modo === 'editar') {
+            document.getElementById('titulo-edicao').textContent = 'Edição de Campos (Acesso Gestão)';
+            fields.forEach(id => {
+                const el = document.getElementById(id);
+                el.readOnly = false;
+                el.classList.add('input-editable');
+            });
+            btnSalvarEdicao.classList.remove('hidden');
+        } 
+        
+        // MODO ATENDIMENTO (T, C, G)
+        else if (modo === 'atendimento' && nivelAtendimento) {
+            document.getElementById('titulo-edicao').textContent = `Registro de Atendimento - ${nivelAtendimento.toUpperCase()}`;
+            btnSalvarAtendimento.classList.remove('hidden');
+
+            let campoParaEditar = '';
+            if (nivelAtendimento === 'tutor') campoParaEditar = 'atendimento-tutor';
+            else if (nivelAtendimento === 'coordenacao') campoParaEditar = 'atendimento-coordenacao';
+            else if (nivelAtendimento === 'gestao') campoParaEditar = 'atendimento-gestao';
+
+            // Habilita apenas o campo específico para edição
+            if (campoParaEditar) {
+                const el = document.getElementById(campoParaEditar);
+                el.readOnly = false;
+                el.classList.add('input-editable');
+                el.focus();
+            }
+        }
+    }
+
+
+    // --- LÓGICA DE SUBMISSÃO (SALVAR ATENDIMENTO) ---
+
+    async function salvarAtendimento(event) {
         event.preventDefault();
-        const inputSenha = document.getElementById('input-senha');
-        const senhaDigitada = inputSenha.value;
-        const id = inputSenha.getAttribute('data-id');
+        const id = ocorrenciaDataGlobal.numero; // Usa o 'numero' como ID da ocorrência
         
-        const senhaCorreta = GESTAO_SENHA_MOCK; 
-
-        if (senhaDigitada === senhaCorreta) {
-            // Redireciona para a página de edição completa
-            const url = `gestao_ocorrencia_editar.html?id=${id}&modo=editar`; 
-            window.location.href = url;
-        } else {
-            mostrarMensagem('Senha incorreta. Tente novamente.', 'danger');
+        if (!id || !nivelAtendimento) {
+            mostrarMensagem("Erro: ID ou nível de atendimento ausente.", 'danger');
+            return;
         }
+
+        let atendimentoText = '';
+        if (nivelAtendimento === 'tutor') atendimentoText = document.getElementById('atendimento-tutor').value;
+        else if (nivelAtendimento === 'coordenacao') atendimentoText = document.getElementById('atendimento-coordenacao').value;
+        else if (nivelAtendimento === 'gestao') atendimentoText = document.getElementById('atendimento-gestao').value;
         
-        inputSenha.value = '';
-        document.getElementById('modal-overlay').classList.add('hidden');
-    }
+        if (!atendimentoText) {
+             mostrarMensagem("O campo de atendimento não pode estar vazio.", 'danger');
+             return;
+        }
 
-    // LÓGICA DE EXCLUSÃO (MOCK)
-    let idOcorrenciaParaExcluir = null;
-    
-    function confirmarExclusao(id) {
-        idOcorrenciaParaExcluir = id;
-        document.getElementById('modal-exclusao-overlay').classList.remove('hidden');
-    }
-
-    async function excluirOcorrencia() {
-        document.getElementById('modal-exclusao-overlay').classList.add('hidden');
-        if (!idOcorrenciaParaExcluir) return;
+        mostrarMensagem('Registrando atendimento...', 'info');
 
         try {
-            // Chama a rota genérica DELETE /api/ocorrencias/<id>
-            const response = await fetch(`/api/ocorrencias/${idOcorrenciaParaExcluir}`, {
-                method: 'DELETE',
+            // Rota POST para registrar atendimento
+            const response = await fetch(`/api/registrar_atendimento/${id}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    nivel: nivelAtendimento,
+                    texto_atendimento: atendimentoText,
+                }),
             });
-
+            
             const result = await response.json();
 
             if (!response.ok) {
-                throw new Error(result.error || 'Falha ao excluir o registro.');
+                throw new Error(result.error || 'Erro desconhecido ao registrar atendimento');
             }
             
-            mostrarMensagem(result.message, 'success');
-            loadOcorrencias(); // Recarrega a lista
+            mostrarMensagem(`Atendimento ${nivelAtendimento.toUpperCase()} registrado com sucesso!`, 'success');
+            
+            // Redireciona para a lista de abertas
+            setTimeout(() => {
+                window.location.href = 'gestao_ocorrencia_abertas.html';
+            }, 1000);
+
         } catch (error) {
-            console.error("Erro ao excluir ocorrência:", error);
-            mostrarMensagem(`Erro ao excluir: ${error.message}`, 'danger');
-        } finally {
-            idOcorrenciaParaExcluir = null;
+            console.error("Erro ao registrar atendimento:", error);
+            mostrarMensagem('Falha: ' + error.message, 'danger');
         }
     }
-    
+
+    // --- LÓGICA DE EDIÇÃO COMPLETA (MOCK) ---
+    function salvarEdicaoCompleta(event) {
+         event.preventDefault();
+         // Esta função chamaria outra rota POST/PUT que atualiza TODOS os campos
+         mostrarMensagem("Função de SALVAR EDIÇÃO COMPLETA ainda não implementada no backend. Use a rota de atendimento.", 'info');
+    }
+
     </script>
     <style>
         /* Estilos de tema */
@@ -218,34 +239,24 @@
         .bg-dark-secondary { background-color: #1E293B; }
         .text-text-light { color: #F8FAFC; }
         .text-accent { color: #10B981; }
+        .input-bg { background-color: #374151; color: #F8FAFC; }
+        .input-readonly { background-color: #1F2937; cursor: not-allowed; opacity: 0.8; }
+        .input-editable { background-color: #1E293B; border: 2px solid #10B981; }
         .btn-primary { background-color: #10B981; color: white; padding: 0.5rem 1rem; border-radius: 0.5rem; transition: background-color 0.2s; }
-        .btn-primary:hover { background-color: #059669; }
-        /* Estilos de tabela */
-        table { width: 100%; border-collapse: separate; border-spacing: 0; }
-        th { text-align: left; padding: 1rem; background-color: #1E293B; color: #F8FAFC; font-weight: 600; }
-        td { border-bottom: 1px solid #334155; }
-        tr:last-child td { border-bottom: none; }
-        /* Cores dos indicadores */
-        .text-tutor-color { color: #007ACC; }
-        .bg-tutor-color\/20 { background-color: rgba(0, 122, 204, 0.2); }
-        .border-tutor-color { border-color: #007ACC; }
-
-        .text-coord-color { color: #F59E0B; }
-        .bg-coord-color\/20 { background-color: rgba(245, 158, 11, 0.2); }
-        .border-coord-color { border-color: #F59E0B; }
-
-        .text-gestao-color { color: #EF4444; }
-        .bg-gestao-color\/20 { background-color: rgba(239, 68, 68, 0.2); }
-        .border-gestao-color { border-color: #EF4444; }
-
-        .form-input {
-            width: 100%;
-            padding: 0.75rem;
-            border-radius: 0.5rem;
-            background-color: #374151;
-            color: #f3f4f6;
-            border: 1px solid #4b5563;
+        .btn-danger { background-color: #DC2626; color: white; padding: 0.5rem 1rem; border-radius: 0.5rem; transition: background-color 0.2s; }
+        .btn-danger:hover { background-color: #C52020; }
+        label { display: block; margin-bottom: 0.25rem; font-weight: 500; }
+        
+        /* CORREÇÃO CRÍTICA DE VISIBILIDADE */
+        textarea, input {
+            color: #F8FAFC !important; /* Garante que o texto seja branco */
+            border-color: #1E293B;
         }
+        textarea:read-only, input:read-only { 
+            background-color: #1F2937 !important;
+            border-color: #1E293B !important;
+        }
+        
     </style>
 </head>
 <body class="bg-dark-primary min-h-screen p-8">
@@ -260,91 +271,102 @@
             <h1 class="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-accent leading-tight tracking-wider">
                 SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR
             </h1>
-            <h2 class="text-xl sm:text-2xl text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
-                OCORRÊNCIAS ABERTAS
+            <h2 id="titulo-edicao" class="text-xl sm:text-2xl text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
+                Carregando Edição...
             </h2>
-            <div class="mt-4 flex flex-wrap justify-center gap-4">
-                 <button type="button" onclick="window.location.href='/gestao_ocorrencia'"
+             <div class="mt-4 flex flex-wrap justify-center gap-4">
+                 <button type="button" onclick="window.location.href='gestao_ocorrencia_abertas.html'"
                          class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200 ease-in-out flex items-center justify-center space-x-2 w-full max-w-xs md:max-w-[150px]">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z"></path></svg>
-                    <span>Voltar</span>
+                    <span>Voltar à Lista</span>
                 </button>
-                <a href="gestao_ocorrencia_nova.html" class="btn-primary flex items-center justify-center space-x-2 w-full max-w-xs md:max-w-[180px]">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span>Nova Ocorrência</span>
-                </a>
-                <button type="button" onclick="window.location.href='/gestao_ocorrencia_finalizadas'"
-                        class="bg-accent hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded-lg transition duration-200 ease-in-out flex items-center justify-center space-x-2 w-full max-w-xs md:max-w-[250px]">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                    <span>Histórico Finalizado</span>
-                </button>
-            </div>
+             </div>
         </header>
 
-        <main class="w-full max-w-7xl flex-grow">
-            <!-- Filtros de Pendência e Tabela (Seção principal da lista) -->
-            <div class="filter-area bg-dark-secondary p-4 rounded-xl shadow-lg mb-4">
-                <h3 class="text-lg font-bold mb-3 text-accent">Filtros de Pendência</h3>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    
-                    <div>
-                        <label for="filter-sala" class="block text-sm font-medium mb-1">Sala:</label>
-                        <select id="filter-sala" class="form-input" onchange="loadOcorrencias()">
-                            <option value="">TODAS AS SALAS</option>
-                        </select>
+        <main class="w-full max-w-5xl mx-auto">
+            
+            <form id="edicao-form" onsubmit="salvarAtendimento(event)">
+                
+                <!-- Dados de Visualização -->
+                <div class="bg-dark-secondary p-6 rounded-xl shadow-lg mb-6">
+                    <h3 class="text-xl font-semibold mb-4 text-accent border-b border-gray-700 pb-2">Detalhes do Aluno e Registro</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        
+                        <div>
+                            <label for="display-aluno" class="text-sm">Aluno</label>
+                            <input type="text" id="display-aluno" class="w-full input-bg input-readonly rounded-lg p-2" readonly>
+                        </div>
+                        <div>
+                            <label for="display-sala" class="text-sm">Sala</label>
+                            <input type="text" id="display-sala" class="w-full input-bg input-readonly rounded-lg p-2" readonly>
+                        </div>
+                        <div>
+                            <label for="display-tutor" class="text-sm">Tutor</label>
+                            <input type="text" id="display-tutor" class="w-full input-bg input-readonly rounded-lg p-2" readonly>
+                        </div>
+                         <div class="md:col-span-3">
+                            <label for="display-registro" class="text-sm">Data/Hora do Registro</label>
+                            <input type="text" id="display-registro" class="w-full input-bg input-readonly rounded-lg p-2" readonly>
+                        </div>
                     </div>
-                    
-                    <div>
-                        <label for="filter-tutor" class="block text-sm font-medium mb-1">Tutor:</label>
-                        <select id="filter-tutor" class="form-input" onchange="loadOcorrencias()">
-                            <option value="">TODOS OS TUTORES</option>
-                        </select>
-                    </div>
-
-                    <div>
-                        <label for="filter-pendencia" class="block text-sm font-medium mb-1">Nível de Pendência:</label>
-                        <select id="filter-pendencia" class="form-input" onchange="loadOcorrencias()">
-                            <option value="">TODAS AS PENDÊNCIAS</option>
-                            <option value="prof_pendente">PENDENTE PROFESSOR</option>
-                            <option value="tutor">PENDENTE TUTOR</option>
-                            <option value="coord">PENDENTE COORDENAÇÃO</option>
-                            <option value="gestao">PENDENTE GESTÃO</option>
-                        </select>
-                    </div>
-
                 </div>
-            </div>
-            <div class="overflow-x-auto bg-dark-secondary rounded-xl shadow-2xl p-4">
-                <table class="min-w-full divide-y divide-gray-700">
-                    <thead class="bg-dark-primary">
-                        <tr>
-                            <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">ID</th>
-                            <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Data Reg.</th>
-                            <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Aluno</th>
-                            <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Sala</th>
-                            <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Professor (Registro)</th>
-                            <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Tutor (Aluno)</th>
-                            <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody id="ocorrencias-corpo" class="divide-y divide-gray-800">
-                        <tr><td colspan="7" class="text-center py-4 text-gray-400">Carregando dados...</td></tr>
-                    </tbody>
-                </table>
-            </div>
+
+                <!-- Descrição e Atendimento Professor (Sempre Visível) -->
+                <div class="bg-dark-secondary p-6 rounded-xl shadow-lg mb-6">
+                     <h3 class="text-xl font-semibold mb-4 text-accent border-b border-gray-700 pb-2">Histórico da Ocorrência</h3>
+                     <div class="mb-4">
+                        <label for="descricao-ocorrencia" class="text-sm">Descrição Ocorrência</label>
+                        <textarea id="descricao-ocorrencia" rows="3" class="w-full input-bg rounded-lg p-2 input-readonly" readonly></textarea>
+                    </div>
+                    <div class="mb-4">
+                        <label for="atendimento-professor" class="text-sm">Atendimento Professor</label>
+                        <textarea id="atendimento-professor" rows="3" class="w-full input-bg rounded-lg p-2 input-readonly" readonly></textarea>
+                    </div>
+                </div>
+                
+                <!-- Blocos de Atendimento (Tutor, Coordenação, Gestão) -->
+                <div class="bg-dark-secondary p-6 rounded-xl shadow-lg mb-6 border-l-4 border-tutor-color">
+                    <h3 class="text-xl font-semibold mb-2 text-tutor-color">Atendimento Tutor <span id="status-tutor" class="text-sm font-light ml-2 text-gray-400"></span></h3>
+                    <textarea id="atendimento-tutor" rows="3" class="w-full input-bg rounded-lg p-2 input-readonly"></textarea>
+                </div>
+
+                <div class="bg-dark-secondary p-6 rounded-xl shadow-lg mb-6 border-l-4 border-coord-color">
+                    <h3 class="text-xl font-semibold mb-2 text-coord-color">Atendimento Coordenação <span id="status-coordenacao" class="text-sm font-light ml-2 text-gray-400"></span></h3>
+                    <textarea id="atendimento-coordenacao" rows="3" class="w-full input-bg rounded-lg p-2 input-readonly"></textarea>
+                </div>
+
+                <div class="bg-dark-secondary p-6 rounded-xl shadow-lg mb-6 border-l-4 border-gestao-color">
+                    <h3 class="text-xl font-semibold mb-2 text-gestao-color">Atendimento Gestão <span id="status-gestao" class="text-sm font-light ml-2 text-gray-400"></span></h3>
+                    <textarea id="atendimento-gestao" rows="3" class="w-full input-bg rounded-lg p-2 input-readonly"></textarea>
+                </div>
+                
+                <!-- Botões de Ação -->
+                <div class="w-full text-center mt-6">
+                    <!-- Botão Salvar Atendimento (Visível apenas em modo atendimento) -->
+                    <button type="submit" id="btn-salvar-atendimento" 
+                            class="w-full max-w-sm btn-primary py-3 font-bold hidden transition duration-200">
+                        SALVAR ATENDIMENTO E FINALIZAR
+                    </button>
+                    <!-- Botão Salvar Edição Completa (Visível apenas em modo edição completa) -->
+                    <button type="button" id="btn-salvar-edicao" onclick="salvarEdicaoCompleta(event)"
+                            class="w-full max-w-sm btn-primary py-3 font-bold hidden transition duration-200">
+                        SALVAR EDIÇÃO COMPLETA
+                    </button>
+                </div>
+
+            </form>
+
         </main>
         
-        <!-- Modal de Senha (Reutilizado para Edição) -->
+        <!-- Modal de Senha (Mantido no HTML do sistema, mas não usado por esta tela) -->
         <div id="modal-overlay" class="hidden fixed inset-0 bg-black bg-opacity-70 z-40 flex justify-center items-center p-4">
             <div class="bg-dark-secondary p-8 rounded-xl shadow-2xl w-full max-w-sm">
                 <h3 id="modal-titulo" class="text-xl font-bold mb-4 text-warning">Acesso Restrito</h3>
-                <p id="modal-texto" class="mb-6">Para acessar a edição completa (Lápis) desta ocorrência, insira a senha de gestão (idrgestao):</p>
+                <p id="modal-texto" class="mb-6">Insira a senha de gestão:</p>
                 
-                <form id="senha-modal" onsubmit="validarSenha(event)">
-                    <input type="password" id="input-senha" placeholder="Senha de Gestão" required
-                           class="w-full form-input mb-4" data-id="">
+                <form onsubmit="validarSenha(event)">
+                    <input type="password" id="input-senha-modal" placeholder="Senha de Gestão" required
+                           class="w-full form-input mb-4" data-id="" data-modo="">
                     <div class="flex justify-end space-x-3">
                         <button type="button" onclick="document.getElementById('modal-overlay').classList.add('hidden')"
                                 class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition">
