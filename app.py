@@ -465,12 +465,12 @@ def api_get_ocorrencias():
         return jsonify({"error": f"Falha ao buscar ocorrências: {e}", "status": 500}), 500
 
 
-# ROTA 10.1: API GET: Listagem de Ocorrências Abertas (NOVA ROTA DE LISTAGEM)
+# ROTA API CORRIGIDA (Versão Final de Listagem)
 @app.route('/api/ocorrencias_abertas', methods=['GET'])
 def api_ocorrencias_abertas():
     try:
         # Busca a ocorrência e faz JOIN com professor e sala para obter os nomes.
-        # Também busca os flags de solicitação de atendimento.
+        # CORRIGIDO: sala_id(sala) para buscar a coluna correta
         response = supabase.table('ocorrencias').select(
             """
             id, 
@@ -482,27 +482,28 @@ def api_ocorrencias_abertas():
             solicitado_coordenacao,
             solicitado_gestao,
             
-            professor_id(nome), 
-            sala_id(nome)        
+            professor_id(nome),     
+            sala_id(sala)       <-- CORRIGIDO: Puxando a coluna 'sala' da tabela d_salas
             """
         ).eq('status', 'Aberta').order('data_hora', desc=True).execute()
 
         ocorrencias_data = response.data 
         
-        # Processa os dados para a forma final (desmembrando os JOINS e formatando)
+        # Processa os dados
         ocorrencias = []
         for item in ocorrencias_data:
             ocorrencia = {
                 "id": item.get('id'),
                 "status": item.get('status'),
                 
+                # Nomes do JOIN: professor_id usa 'nome', sala_id usa 'sala'
                 "professor_nome": item.get('professor_id', {}).get('nome', 'N/A'),
-                "sala_nome": item.get('sala_id', {}).get('nome', 'N/A'),
+                "sala_nome": item.get('sala_id', {}).get('sala', 'N/A'), <-- CORRIGIDO AQUI TAMBÉM
                 
                 "aluno_nome": item.get('aluno_nome', 'N/A'),
                 "tutor_nome": item.get('tutor_nome', 'N/A'),
                 
-                # Campos de solicitação
+                # Flags de solicitação
                 "solicitado_tutor": item.get('solicitado_tutor', False),
                 "solicitado_coordenacao": item.get('solicitado_coordenacao', False),
                 "solicitado_gestao": item.get('solicitado_gestao', False),
@@ -515,10 +516,9 @@ def api_ocorrencias_abertas():
         return jsonify(ocorrencias), 200
 
     except Exception as e:
-        # Erro detalhado que pode ser verificado no log do Render
-        logging.error(f"Erro ao buscar ocorrências abertas: {e}")
-        return jsonify({"error": f"Erro interno ao carregar a lista: Verifique as Foreign Keys do Supabase (Professor/Sala): {e}", "status": 500}), 500
-
+        # Erro detalhado para logs, caso ainda haja falha
+        logging.error(f"Erro CRÍTICO ao buscar ocorrências abertas: {e}")
+        return jsonify({"error": f"Erro interno ao carregar a lista: Falha no JOIN. Detalhe: {e}", "status": 500}), 500
 # ROTA 11: API GET: Listagem de Todos Alunos (Módulo Cadastro/Relatório)
 @app.route('/api/alunos', methods=['GET'])
 def api_get_alunos_all():
@@ -1344,6 +1344,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
