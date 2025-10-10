@@ -536,23 +536,52 @@ def api_ocorrencias_abertas():
 # ============================================================
 # 🔹 API: Buscar detalhes de uma ocorrência específica por ID
 # ============================================================
-@app.route("/api/ocorrencias/<int:ocorrencia_id>", methods=["GET"])
-def api_obter_ocorrencia(ocorrencia_id):
+@app.route('/api/ocorrencias', methods=['GET'])
+@app.route('/api/ocorrencias/<ocorrencia_id>', methods=['GET'])
+def api_get_ocorrencias(ocorrencia_id=None):
+    """
+    Busca todas as ocorrências ou uma ocorrência específica (para Edição/Visualização).
+    Faz JOIN para incluir os nomes do Professor e da Sala no detalhe.
+    """
     try:
-        supabase = conectar_supabase()
-        if not supabase:
-            return jsonify({"error": "Falha ao conectar ao banco de dados"}), 500
-
-        resposta = supabase.table("ocorrencias").select("*").eq("id", ocorrencia_id).execute()
-
-        if not resposta.data:
-            return jsonify({"error": "Ocorrência não encontrada"}), 404
-
-        # Retorna o primeiro (e único) registro encontrado
-        return jsonify(resposta.data[0]), 200
+        # Campos necessários para o detalhe, incluindo JOINs
+        select_query_detail = """
+            numero, data_hora, descricao, atendimento_professor,
+            atendimento_tutor, atendimento_coordenacao, atendimento_gestao,
+            dt_atendimento_tutor, dt_atendimento_coordenacao, dt_atendimento_gestao,
+            aluno_nome, tutor_nome,
+            professor_id(nome), 
+            sala_id(sala)        
+        """
+        
+        if ocorrencia_id:
+            # --- BUSCA DETALHADA ---
+            response = supabase.table('ocorrencias').select(select_query_detail).eq('numero', int(ocorrencia_id)).single().execute()
+            data = handle_supabase_response(response)
+            
+            # Mapeia e formata os dados para o JavaScript
+            if data and isinstance(data, dict):
+                data['id'] = data['numero']
+                # Mapeia os nomes dos JOINS para chaves simples que o JS espera
+                data['professor_nome'] = data.get('professor_id', {}).get('nome', 'N/A')
+                data['sala_nome'] = data.get('sala_id', {}).get('sala', 'N/A')
+                
+                # O JavaScript ainda tentará usar o 'display-sala' e 'display-professor'
+                # Agora, ele terá os dados completos (professor_nome e sala_nome)
+                
+                # Remove os objetos JOIN brutos para limpeza
+                del data['professor_id']
+                del data['sala_id']
+            
+            return jsonify(data), 200
+        else:
+            # --- BUSCA DE LISTAGEM (LISTA GERAL) ---
+            response = supabase.table('ocorrencias').select('*').order('data_hora', desc=True).execute()
+            return jsonify(handle_supabase_response(response)), 200
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logging.error(f"Erro ao buscar ocorrência de detalhe: {e}")
+        return jsonify({"error": f"Falha ao buscar detalhes: {e}", "status": 500}), 500
 
         
 # ROTA 11: API GET: Listagem de Todos Alunos (Módulo Cadastro/Relatório)
@@ -1419,6 +1448,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
