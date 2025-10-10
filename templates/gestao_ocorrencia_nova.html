@@ -108,9 +108,9 @@
         selectSala.innerHTML = '<option value="" disabled selected>Selecione a Sala</option>';
         
         // FIX: Added (a.sala || '') to prevent 'Cannot read properties of undefined' crash
-        salas.sort((a, b) => (a.sala || '').localeCompare(b.sala || '')).forEach(sala => {
+        salas.sort((a, b) => (a.nome || '').localeCompare(b.nome || '')).forEach(sala => {
             // Check for valid data before adding option
-            if (sala.id && sala.sala) {
+            if (sala.id && sala.nome) {
                 // Uses sala.id as value and sala.sala as text
                 selectSala.insertAdjacentHTML('beforeend', `<option value="${sala.id}">${sala.sala}</option>`);
             }
@@ -368,5 +368,6 @@
 </body>
 
 </html>
+
 
 
