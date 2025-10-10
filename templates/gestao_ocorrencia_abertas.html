@@ -13,7 +13,7 @@
                 colors: {
                     'dark-primary': '#0F172A',
                     'dark-secondary': '#1E293B',
-                    'accent': '#10B981',
+                    'accent': '#10B981', // Cor verde/accent
                     'text-light': '#F8FAFC',
                     'danger': '#DC2626',
                     'tutor-color': '#007ACC', // Azul para Tutor
@@ -57,13 +57,11 @@
         // 1. Botões fixos (Lupa/Lápis)
         let html = `
             <div class="flex items-center space-x-3">
-                <!-- LUPA (Visualizar Detalhes) -->
-                <a href="gestao_ocorrencia_editar.html?id=${id}&view=true" title="Visualizar Detalhes"
+                <a href="gestao_ocorrencia_editar.html?id=${id}&modo=visualizar" title="Visualizar Detalhes"
                     class="text-gray-400 hover:text-accent transition duration-150">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                 </a>
-                <!-- LÁPIS (Editar - Acesso Gestão) -->
-                <a href="#" onclick="abrirModalSenhaEdicao('${id}')" title="Editar Ocorrência (Acesso Gestão)"
+                <a href="#" onclick="abrirModalSenhaEdicao('${id}', 'edicao_completa')" title="Editar Ocorrência (Acesso Gestão)"
                     class="text-accent hover:text-green-400 transition duration-150">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-9-5l5-5m-5 5l5 5"></path></svg>
                 </a>
@@ -72,13 +70,16 @@
         // 2. Indicadores de Atendimento (T, C, G)
         let indicadores = '';
         if (ocorrencia.solicitado_tutor) {
-            indicadores += `<span class="bg-tutor-color/20 text-tutor-color text-xs font-bold px-2 py-1 rounded-full border border-tutor-color" title="Solicitado Atendimento do Tutor">T</span>`;
+            indicadores += `<a href="#" onclick="abrirModalSenhaEdicao('${id}', 'tutor')" title="Atendimento Pendente do Tutor"
+                            class="bg-tutor-color/20 text-tutor-color text-xs font-bold px-2 py-1 rounded-full border border-tutor-color hover:bg-tutor-color hover:text-white transition">T</a>`;
         }
         if (ocorrencia.solicitado_coordenacao) {
-            indicadores += `<span class="bg-coord-color/20 text-coord-color text-xs font-bold px-2 py-1 rounded-full border border-coord-color" title="Solicitado Atendimento da Coordenação">C</span>`;
+            indicadores += `<a href="#" onclick="abrirModalSenhaEdicao('${id}', 'coordenacao')" title="Atendimento Pendente da Coordenação"
+                            class="bg-coord-color/20 text-coord-color text-xs font-bold px-2 py-1 rounded-full border border-coord-color hover:bg-coord-color hover:text-white transition">C</a>`;
         }
         if (ocorrencia.solicitado_gestao) {
-            indicadores += `<span class="bg-gestao-color/20 text-gestao-color text-xs font-bold px-2 py-1 rounded-full border border-gestao-color" title="Solicitado Atendimento da Gestão">G</span>`;
+            indicadores += `<a href="#" onclick="abrirModalSenhaEdicao('${id}', 'gestao')" title="Atendimento Pendente da Gestão"
+                            class="bg-gestao-color/20 text-gestao-color text-xs font-bold px-2 py-1 rounded-full border border-gestao-color hover:bg-gestao-color hover:text-white transition">G</a>`;
         }
 
         if (indicadores) {
@@ -98,6 +99,7 @@
         tabelaCorpo.innerHTML = ''; 
 
         try {
+            // A rota do Flask agora traz os nomes formatados (Professor, Sala)
             const response = await fetch('/api/ocorrencias_abertas');
             if (!response.ok) {
                 const errorData = await response.json();
@@ -134,17 +136,29 @@
         }
     }
     
-    // LÓGICA DE MODAL DE ACESSO (Edição)
-    function abrirModalSenhaEdicao(ocorrenciaId) {
+    // --- LÓGICA DE MODAL DE ACESSO (Edição/Atendimento) ---
+
+    // Abre o modal de senha, definindo o modo (edicao_completa, tutor, coordenacao, gestao)
+    function abrirModalSenhaEdicao(ocorrenciaId, modoAcesso) {
         const modal = document.getElementById('modal-overlay');
         const inputSenha = document.getElementById('input-senha');
         
-        // Passa o ID da Ocorrência para a função de validação
-        inputSenha.setAttribute('data-id', ocorrenciaId);
+        let titulo = '';
+        let texto = '';
         
-        // Atualiza a mensagem do modal para edição completa
-        document.getElementById('modal-titulo').textContent = 'Edição Completa (Acesso Gestão)';
-        document.getElementById('modal-texto').textContent = `Para acessar a edição completa (Lápis) da Ocorrência ${ocorrenciaId}, insira a senha de gestão:`;
+        if (modoAcesso === 'edicao_completa') {
+            titulo = 'Edição Completa (Gestão)';
+            texto = `Para editar todos os campos da Ocorrência ${ocorrenciaId}, insira a senha de gestão:`;
+        } else {
+            titulo = `Atendimento Pendente (${modoAcesso.toUpperCase()})`;
+            texto = `Para registrar o atendimento de ${modoAcesso.toUpperCase()}, insira sua senha de acesso:`;
+        }
+        
+        inputSenha.setAttribute('data-id', ocorrenciaId);
+        inputSenha.setAttribute('data-modo', modoAcesso);
+        
+        document.getElementById('modal-titulo').textContent = titulo;
+        document.getElementById('modal-texto').textContent = texto;
         
         modal.classList.remove('hidden');
         inputSenha.focus();
@@ -156,19 +170,63 @@
         const inputSenha = document.getElementById('input-senha');
         const senhaDigitada = inputSenha.value;
         const id = inputSenha.getAttribute('data-id');
+        const modo = inputSenha.getAttribute('data-modo'); 
         
+        // MOCK: A senha deve ser substituída pelo processo de login/autenticação real
         const senhaCorreta = GESTAO_SENHA_MOCK; 
 
         if (senhaDigitada === senhaCorreta) {
-            // Redireciona para a página de edição
-            const url = `gestao_ocorrencia_editar.html?id=${id}&modo=editar`; 
+            
+            let url = `gestao_ocorrencia_editar.html?id=${id}`;
+
+            if (modo === 'edicao_completa') {
+                url += `&modo=editar`; // Abre todos os campos para edição
+            } else {
+                url += `&modo=atendimento&nivel=${modo}`; // Abre apenas o campo de atendimento específico
+            }
+
             window.location.href = url;
+
         } else {
             mostrarMensagem('Senha incorreta. Tente novamente.', 'danger');
         }
         
         inputSenha.value = '';
         document.getElementById('modal-overlay').classList.add('hidden');
+    }
+
+    // LÓGICA DE EXCLUSÃO (MOCK)
+    let idOcorrenciaParaExcluir = null;
+    
+    function confirmarExclusao(id) {
+        idOcorrenciaParaExcluir = id;
+        document.getElementById('modal-exclusao-overlay').classList.remove('hidden');
+    }
+
+    async function excluirOcorrencia() {
+        document.getElementById('modal-exclusao-overlay').classList.add('hidden');
+        if (!idOcorrenciaParaExcluir) return;
+
+        try {
+            // Chama a rota genérica DELETE /api/ocorrencias/<id>
+            const response = await fetch(`/api/ocorrencias/${idOcorrenciaParaExcluir}`, {
+                method: 'DELETE',
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Falha ao excluir o registro.');
+            }
+            
+            mostrarMensagem(result.message, 'success');
+            loadOcorrencias(); // Recarrega a lista
+        } catch (error) {
+            console.error("Erro ao excluir ocorrência:", error);
+            mostrarMensagem(`Erro ao excluir: ${error.message}`, 'danger');
+        } finally {
+            idOcorrenciaParaExcluir = null;
+        }
     }
     
     </script>
@@ -212,16 +270,15 @@
 <body class="bg-dark-primary min-h-screen p-8">
 
     <div id="mensagem-status" class="hidden fixed top-4 right-4 p-4 rounded-lg shadow-xl text-text-light z-50 transition-opacity duration-300" role="alert">
-        <!-- Mensagens de status aparecem aqui -->
-    </div>
+        </div>
 
     <div class="max-w-7xl mx-auto">
         <header class="w-full text-center mb-8 mt-4">
-            <h1 class="text-3xl sm:text-4xl font-extrabold text-danger leading-tight tracking-wider">
-                OCORRÊNCIAS ABERTAS
+            <h1 class="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-accent leading-tight tracking-wider">
+                SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR
             </h1>
             <h2 class="text-xl sm:text-2xl text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
-                Pendências de Atendimento
+                OCORRÊNCIAS ABERTAS
             </h2>
             <div class="mt-4 flex flex-wrap justify-center gap-4">
                  <button type="button" onclick="window.location.href='/gestao_ocorrencia'"
@@ -244,28 +301,27 @@
         </header>
 
         <main class="w-full max-w-7xl flex-grow">
-            <!-- Filtros de Pendência e Tabela (Seção principal da lista) -->
             <div class="filter-area bg-dark-secondary p-4 rounded-xl shadow-lg mb-4">
                 <h3 class="text-lg font-bold mb-3 text-accent">Filtros de Pendência</h3>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                     
                     <div>
                         <label for="filter-sala" class="block text-sm font-medium mb-1">Sala:</label>
-                        <select id="filter-sala" class="form-input" onchange="aplicarFiltros()">
+                        <select id="filter-sala" class="form-input" onchange="loadOcorrencias()">
                             <option value="">TODAS AS SALAS</option>
                         </select>
                     </div>
                     
                     <div>
                         <label for="filter-tutor" class="block text-sm font-medium mb-1">Tutor:</label>
-                        <select id="filter-tutor" class="form-input" onchange="aplicarFiltros()">
+                        <select id="filter-tutor" class="form-input" onchange="loadOcorrencias()">
                             <option value="">TODOS OS TUTORES</option>
                         </select>
                     </div>
 
                     <div>
                         <label for="filter-pendencia" class="block text-sm font-medium mb-1">Nível de Pendência:</label>
-                        <select id="filter-pendencia" class="form-input" onchange="aplicarFiltros()">
+                        <select id="filter-pendencia" class="form-input" onchange="loadOcorrencias()">
                             <option value="">TODAS AS PENDÊNCIAS</option>
                             <option value="prof_pendente">PENDENTE PROFESSOR</option>
                             <option value="tutor">PENDENTE TUTOR</option>
@@ -296,7 +352,6 @@
             </div>
         </main>
         
-        <!-- Modal de Senha (Reutilizado para Edição) -->
         <div id="modal-overlay" class="hidden fixed inset-0 bg-black bg-opacity-70 z-40 flex justify-center items-center p-4">
             <div class="bg-dark-secondary p-8 rounded-xl shadow-2xl w-full max-w-sm">
                 <h3 id="modal-titulo" class="text-xl font-bold mb-4 text-warning">Acesso Restrito</h3>
@@ -319,7 +374,6 @@
             </div>
         </div>
 
-        <!-- Rodapé da Página -->
         <footer class="w-full text-center mt-10 p-4 text-gray-400 text-sm border-t border-gray-800">
             <p class="mb-1 text-base font-medium">
                 DESENVOLVEDOR: MARCELO CARDES E LUIS FELIPE CARDES
