@@ -112,7 +112,7 @@
             // Check for valid data before adding option
             if (sala.id && sala.nome) {
                 // Uses sala.id as value and sala.sala as text
-                selectSala.insertAdjacentHTML('beforeend', `<option value="${sala.id}">${sala.sala}</option>`);
+                selectSala.insertAdjacentHTML('beforeend', `<option value="${sala.id}">${sala.nome}</option>`);
             }
         });
         
@@ -368,6 +368,7 @@
 </body>
 
 </html>
+
 
 
 
