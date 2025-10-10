@@ -435,7 +435,7 @@ def api_get_agendamentos_pendentes(professor_id):
 @app.route('/api/ocorrencias', methods=['GET'])
 def api_get_ocorrencias():
     try:
-        # Busca com join implícito de d_alunos para pegar o nome
+        # Tabela corrigida: ocorrencias
         response = supabase.table('ocorrencias').select('*').order('data_hora', desc=True).execute() 
         ocorrencias = handle_supabase_response(response)
         
@@ -861,35 +861,37 @@ def api_salvar_saida_antecipada():
 @app.route('/api/registrar_ocorrencia', methods=['POST'])
 def api_registrar_ocorrencia():
     data = request.json
-    prof_id = data.get('prof_id')
+    professor_id = data.get('professor_id') # Usando professor_id (como na tabela)
     aluno_id = data.get('aluno_id')
     sala_id = data.get('sala_id')
     
     required_text_fields = ['descricao', 'atendimento_professor']
-    if not prof_id or not aluno_id or not sala_id or not all(data.get(f) for f in required_text_fields):
+    if not professor_id or not aluno_id or not sala_id or not all(data.get(f) for f in required_text_fields):
         return jsonify({"error": "Dados obrigatórios (Professor, Aluno, Sala, Descrição e Atendimento Professor) são necessários.", "status": 400}), 400
 
     try:
-        prof_id_bigint = int(prof_id)
+        professor_id_bigint = int(professor_id)
         aluno_id_bigint = int(aluno_id)
         sala_id_bigint = int(sala_id)
 
         nova_ocorrencia = {
-            "fk_professor_registro_id": prof_id_bigint,
-            "fk_aluno_id": aluno_id_bigint,
-            "fk_sala_id": sala_id_bigint,
-            "data_hora": "now()", 
+            "professor_id": professor_id_bigint, # Corrigido para professor_id
+            "aluno_id": aluno_id_bigint,
+            "sala_id": sala_id_bigint,
+            "data_hora": "now()",
             "descricao": data['descricao'],
             "atendimento_professor": data['atendimento_professor'],
-            "tipo": data.get('tipo', 'Comportamental'), 
+            "tipo": data.get('tipo', 'Comportamental'),
             "status": "Aberta",
             "solicitado_tutor": data.get('solicitar_tutor', False),
             "solicitado_coordenacao": data.get('solicitar_coordenacao', False),
             "solicitado_gestao": data.get('solicitar_gestao', False),
+            # Incluindo campos de nome (denormalização)
             "aluno_nome": data.get('aluno_nome'),
-            "tutor_nome": data.get('tutor_nome'),
+            "tutor_nome": data.get('tutor_nome'), 
         }
         
+        # Tabela corrigida: ocorrencias
         response = supabase.table('ocorrencias').insert(nova_ocorrencia).execute()
         handle_supabase_response(response)
 
@@ -898,6 +900,7 @@ def api_registrar_ocorrencia():
     except Exception as e:
         logging.error(f"Erro no Supabase ao registrar ocorrência: {e}")
         return jsonify({"error": f"Falha ao registrar ocorrência: {e}", "status": 500}), 500
+
 
 
 # ROTA 24: API POST: Registro de Agendamento de Tutoria
@@ -1005,6 +1008,7 @@ def api_atualizar_ocorrencia(ocorrencia_id):
     try:
         ocorrencia_id_bigint = int(ocorrencia_id)
         
+        # Tabela corrigida: ocorrencias
         response = supabase.table('ocorrencias').update(data).eq('id', ocorrencia_id_bigint).execute()
         handle_supabase_response(response)
 
@@ -1012,7 +1016,7 @@ def api_atualizar_ocorrencia(ocorrencia_id):
 
     except Exception as e:
         return jsonify({"error": f"Falha ao atualizar ocorrência: {e}", "status": 500}), 500
-
+        
 # ROTA 27: API POST: Finalizar Retirada de Equipamento (Tecnologia)
 @app.route('/api/finalizar_retirada_equipamento', methods=['POST'])
 def api_finalizar_retirada_equipamento():
@@ -1237,6 +1241,7 @@ def api_delete_aluno(aluno_id):
 @app.route('/api/ocorrencias/<ocorrencia_id>', methods=['DELETE'])
 def api_delete_ocorrencia(ocorrencia_id):
     try:
+        # Tabela corrigida: ocorrencias
         supabase.table('ocorrencias').delete().eq('id', int(ocorrencia_id)).execute()
         return jsonify({"message": f"Ocorrência {ocorrencia_id} excluída com sucesso.", "status": 200}), 200
     except Exception as e:
@@ -1249,6 +1254,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
