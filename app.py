@@ -260,39 +260,48 @@ def api_get_funcionarios():
     except Exception as e:
         return jsonify({"error": f"Erro ao buscar funcionários: {e}", "status": 500}), 500
 
-# ROTA 3: API GET — Listagem de Alunos por Sala (com nome do Tutor)
+# ROTA 3: API GET — Listagem de Alunos por Sala (usando d_funcionarios direto)
 @app.route('/api/alunos_por_sala/<sala_id>', methods=['GET'])
 def api_get_alunos_por_sala(sala_id):
     """
-    Retorna todos os alunos vinculados a uma sala específica,
-    incluindo o nome do tutor (quando houver).
+    Retorna todos os alunos de uma sala,
+    incluindo o nome do tutor (d_funcionarios),
+    usando a relação direta tutor_id -> d_funcionarios.id.
     """
     try:
         sala_id_bigint = int(sala_id)
 
-        # SELECT usando nomes reais das colunas
-        # e join correto com d_funcionarios (via tutor_id → id)
-        response = (
+        # 1️⃣ Busca os alunos da sala
+        response_alunos = (
             supabase.table('d_alunos')
-            .select('id, nome, tutor_id, d_funcionarios!d_alunos_tutor_id_fkey(nome)')
+            .select('id, nome, tutor_id')
             .eq('sala_id', sala_id_bigint)
             .order('nome')
             .execute()
         )
+        alunos_raw = handle_supabase_response(response_alunos)
 
-        alunos_raw = handle_supabase_response(response)
+        # 2️⃣ Busca todos os funcionários marcados como tutor
+        response_tutores = (
+            supabase.table('d_funcionarios')
+            .select('id, nome')
+            .eq('is_tutor', True)
+            .execute()
+        )
+        tutores_raw = handle_supabase_response(response_tutores)
+
+        # 3️⃣ Cria um dicionário { id_tutor: nome_tutor }
+        tutores_dict = {str(t['id']): t['nome'] for t in tutores_raw}
+
+        # 4️⃣ Monta o JSON final combinando aluno + tutor
         alunos = []
-
         for a in alunos_raw:
-            tutor_nome = (
-                a['d_funcionarios']['nome']
-                if a.get('d_funcionarios') and a['d_funcionarios']
-                else 'Tutor Não Definido'
-            )
+            tutor_id_str = str(a['tutor_id']) if a['tutor_id'] else None
+            tutor_nome = tutores_dict.get(tutor_id_str, 'Tutor Não Definido')
             alunos.append({
                 "id": str(a['id']),
                 "nome": a['nome'],
-                "tutor_id": str(a['tutor_id']) if a['tutor_id'] else None,
+                "tutor_id": tutor_id_str,
                 "tutor_nome": tutor_nome
             })
 
@@ -301,6 +310,7 @@ def api_get_alunos_por_sala(sala_id):
     except Exception as e:
         logging.error(f"Erro ao buscar alunos por sala: {e}")
         return jsonify({"error": f"Erro ao buscar alunos por sala: {e}", "status": 500}), 500
+
 
 # ROTA 4: API GET: Listagem de Alunos por Tutor (Filtro Cascata)
 @app.route('/api/alunos_por_tutor/<tutor_id>', methods=['GET'])
@@ -1194,6 +1204,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
