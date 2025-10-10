@@ -867,37 +867,47 @@ def api_salvar_saida_antecipada():
 @app.route('/api/registrar_ocorrencia', methods=['POST'])
 def api_registrar_ocorrencia():
     data = request.json
-    professor_id = data.get('professor_id') # Usando professor_id (como na tabela)
-    aluno_id = data.get('aluno_id')
-    sala_id = data.get('sala_id')
     
-    required_text_fields = ['descricao', 'atendimento_professor']
-    if not professor_id or not aluno_id or not sala_id or not all(data.get(f) for f in required_text_fields):
+    # Tentativa de converter IDs para INT de forma segura. Se falhar, é nulo.
+    try:
+        prof_id_bigint = int(data.get('prof_id')) if data.get('prof_id') else None
+        aluno_id_bigint = int(data.get('aluno_id')) if data.get('aluno_id') else None
+        sala_id_bigint = int(data.get('sala_id')) if data.get('sala_id') else None
+    except ValueError:
+        # Se os IDs não puderem ser convertidos, tratamos como nulo
+        prof_id_bigint, aluno_id_bigint, sala_id_bigint = None, None, None
+
+    # Campos de texto obrigatórios
+    descricao = data.get('descricao')
+    atendimento_professor = data.get('atendimento_professor')
+
+    # Validação no Flask
+    if not prof_id_bigint or not aluno_id_bigint or not sala_id_bigint or not descricao or not atendimento_professor:
         return jsonify({"error": "Dados obrigatórios (Professor, Aluno, Sala, Descrição e Atendimento Professor) são necessários.", "status": 400}), 400
 
     try:
-        professor_id_bigint = int(professor_id)
-        aluno_id_bigint = int(aluno_id)
-        sala_id_bigint = int(sala_id)
-
         nova_ocorrencia = {
-            "professor_id": professor_id_bigint, # Corrigido para professor_id
-            "aluno_id": aluno_id_bigint,
-            "sala_id": sala_id_bigint,
+            # Nomes das colunas da tabela 'ocorrencias'
+            "professor_id": prof_id_bigint, 
+            "aluno_id": aluno_id_bigint, 
+            "sala_id": sala_id_bigint, 
             "data_hora": "now()",
-            "descricao": data['descricao'],
-            "atendimento_professor": data['atendimento_professor'],
-            "tipo": data.get('tipo', 'Comportamental'),
+            "descricao": descricao,
+            "atendimento_professor": atendimento_professor,
+            
+            # Colunas de Display (Aceitas pela tabela 'ocorrencias' que criamos)
+            "aluno_nome": data.get('aluno_nome'),
+            "tutor_nome": data.get('tutor_nome'),
+            
+            # Metadados
+            "tipo": data.get('tipo', 'Comportamental'), 
             "status": "Aberta",
             "solicitado_tutor": data.get('solicitar_tutor', False),
             "solicitado_coordenacao": data.get('solicitar_coordenacao', False),
             "solicitado_gestao": data.get('solicitar_gestao', False),
-            # Incluindo campos de nome (denormalização)
-            "aluno_nome": data.get('aluno_nome'),
-            "tutor_nome": data.get('tutor_nome'), 
         }
         
-        # Tabela corrigida: ocorrencias
+        # Inserção na tabela 'ocorrencias'
         response = supabase.table('ocorrencias').insert(nova_ocorrencia).execute()
         handle_supabase_response(response)
 
@@ -906,7 +916,6 @@ def api_registrar_ocorrencia():
     except Exception as e:
         logging.error(f"Erro no Supabase ao registrar ocorrência: {e}")
         return jsonify({"error": f"Falha ao registrar ocorrência: {e}", "status": 500}), 500
-
 
 
 # ROTA 24: API POST: Registro de Agendamento de Tutoria
@@ -1260,6 +1269,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
