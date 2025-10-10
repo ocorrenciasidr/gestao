@@ -40,16 +40,18 @@
         const msgElement = document.getElementById('mensagem-status');
         msgElement.textContent = texto;
 
-        msgElement.classList.remove('hidden', 'bg-success', 'bg-danger', 'bg-warning');
+        // Garante que todas as classes de cor sejam removidas antes de aplicar a nova
+        msgElement.classList.remove('hidden', 'bg-accent', 'bg-danger', 'bg-dark-secondary');
 
         if (tipo === 'success') {
             msgElement.classList.add('bg-accent');
         } else if (tipo === 'danger') {
             msgElement.classList.add('bg-danger');
-        } else if (tipo === 'warning') {
-            msgElement.classList.add('bg-warning');
+        } else if (tipo === 'warning' || tipo === 'info') {
+            // Usando dark-secondary para mensagens informativas/loading
+            msgElement.classList.add('bg-dark-secondary', 'text-yellow-400');
         } else {
-            msgElement.classList.add('bg-dark-secondary'); // Default para info
+             msgElement.classList.add('bg-dark-secondary'); 
         }
 
         msgElement.classList.remove('hidden');
@@ -60,7 +62,7 @@
 
     // LÓGICA DE CARREGAMENTO DE DADOS (USANDO ROTAS FLASK)
     async function carregarDadosDeLookup() {
-        mostrarMensagem('Carregando dados de professores e salas...', 'warning');
+        mostrarMensagem('Carregando dados de professores e salas...', 'info');
 
         try {
             // 1. Fetch de Professores/Funcionários
@@ -68,11 +70,10 @@
             if (!responseProfs.ok) throw new Error("Falha ao carregar Professores.");
             funcionariosDataGlobal = await responseProfs.json();
 
-            // 2. Fetch de Salas (IMPROVED ERROR HANDLING)
+            // 2. Fetch de Salas
             const responseSalas = await fetch('/api/salas');
             
             if (!responseSalas.ok) {
-                // Reads detailed error message from the server (e.g., the Supabase 400 error description)
                 const errorText = await responseSalas.text(); 
                 throw new Error("Falha ao carregar Salas. Status: " + responseSalas.status + ". Detalhe: " + errorText.substring(0, 150) + "..."); 
             }
@@ -103,20 +104,16 @@
             selectProfResp.insertAdjacentHTML('beforeend', `<option value="${prof.id}">${prof.nome}</option>`);
         });
         
-        // 2. Preencher Salas (FIXED with safety check for 'sala' property)
+        // 2. Preencher Salas 
         const selectSala = document.getElementById('sala');
         selectSala.innerHTML = '<option value="" disabled selected>Selecione a Sala</option>';
         
-        // FIX: Added (a.sala || '') to prevent 'Cannot read properties of undefined' crash
         salas.sort((a, b) => (a.nome || '').localeCompare(b.nome || '')).forEach(sala => {
-            // Check for valid data before adding option
             if (sala.id && sala.nome) {
-                // Uses sala.id as value and sala.sala as text
                 selectSala.insertAdjacentHTML('beforeend', `<option value="${sala.id}">${sala.nome}</option>`);
             }
         });
         
-        // Força a atualização inicial
         atualizarAlunos();
     }
 
@@ -131,22 +128,20 @@
             mostrarMensagem('Carregando alunos da sala...', 'info');
 
             try {
-                // Fetch Alunos por Sala (ROTA CASCATA)
                 const response = await fetch(`/api/alunos_por_sala/${selectedSalaId}`);
                 if (!response.ok) throw new Error("Falha ao carregar alunos.");
                 alunosDataGlobal = await response.json(); // Array de {id, nome, tutor_id, tutor_nome}
                 
                 alunosDataGlobal.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(aluno => {
                     const option = document.createElement('option');
-                    option.value = aluno.id; // ID do Aluno
-                    // Guarda o nome do tutor no data-attribute para preenchimento automático
+                    option.value = aluno.id; 
                     option.setAttribute('data-tutor', aluno.tutor_nome || 'Tutor Não Definido');
                     option.textContent = aluno.nome;
                     selectAluno.appendChild(option);
                 });
                 
                 selectAluno.disabled = false;
-                mostrarMensagem('', 'success'); // Limpa a mensagem
+                mostrarMensagem('', 'success'); 
                 
             } catch (error) {
                 console.error("Erro ao carregar alunos:", error.message);
@@ -168,110 +163,100 @@
         }
     }
 
-    // LÓGICA DE SUBMISSÃO (CREATE) - USANDO ROTA FLASK/SUPABASE
- async function submeterOcorrencia(event) {
-    event.preventDefault();
-    
-    // Captura os IDs diretamente dos campos <select>
-    const selectedProfId = document.getElementById('prof-responsavel').value;
-    const selectedSalaId = document.getElementById('sala').value;
-    const selectedAlunoId = document.getElementById('aluno').value;
+    // LÓGICA DE SUBMISSÃO (CREATE) - CORRIGIDA
+    async function submeterOcorrencia(event) {
+        event.preventDefault();
+        
+        const selectedProfId = document.getElementById('prof-responsavel').value;
+        const selectedSalaId = document.getElementById('sala').value;
+        const selectedAlunoId = document.getElementById('aluno').value;
 
-    // Busca os metadados do aluno para os campos de display (nome do aluno e nome do tutor)
-    const aluno = alunosDataGlobal.find(a => String(a.id) === selectedAlunoId) || {};
-    
-    const rawData = {
-        prof_id: selectedProfId, // ID do Professor
-        sala_id: selectedSalaId, // ID da Sala
-        aluno_id: selectedAlunoId, // ID do Aluno
+        const aluno = alunosDataGlobal.find(a => String(a.id) === selectedAlunoId) || {};
         
-        descricao: document.getElementById('descricao-ocorrencia').value,
-        atendimento_professor: document.getElementById('atendimento-professor').value,
+        const rawData = {
+            prof_id: selectedProfId, 
+            sala_id: selectedSalaId, 
+            aluno_id: selectedAlunoId, 
+            
+            descricao: document.getElementById('descricao-ocorrencia').value,
+            atendimento_professor: document.getElementById('atendimento-professor').value,
+            
+            solicitar_tutor: document.getElementById('solicitar-tutor').checked,
+            solicitar_coordenacao: document.getElementById('solicitar-coordenacao').checked,
+            solicitar_gestao: document.getElementById('solicitar-gestao').checked,
+            
+            aluno_nome: aluno.nome || 'N/A',
+            tutor_nome: aluno.tutor_nome || 'N/A',
+        };
         
-        solicitar_tutor: document.getElementById('solicitar-tutor').checked,
-        solicitar_coordenacao: document.getElementById('solicitar-coordenacao').checked,
-        solicitar_gestao: document.getElementById('solicitar-gestao').checked,
-        
-        // Campos de Display (Display names, que agora a tabela 'ocorrencias' aceita)
-        aluno_nome: aluno.nome || 'N/A',
-        tutor_nome: aluno.tutor_nome || 'N/A',
-    };
-    
-    // Validação robusta
-    if (!rawData.prof_id || !rawData.sala_id || !rawData.aluno_id || !rawData.descricao || !rawData.atendimento_professor) {
-        mostrarMensagem('Por favor, preencha todos os campos obrigatórios (marcados com *) antes de registrar a ocorrência.', 'danger');
-        return;
-    }
-    
-    mostrarMensagem('Registrando ocorrência...', 'warning');
-
-    try {
-        // Rota POST /api/registrar_ocorrencia (Tabela 'ocorrencias' no app.py)
-        const response = await fetch('/api/registrar_ocorrencia', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(rawData),
-        });
-        
-        const result = await response.json();
-
-        if (!response.ok) {
-            throw new Error(result.error || 'Erro desconhecido ao registrar');
+        // Validação robusta (verificando se os campos têm valor)
+        if (!rawData.prof_id || !rawData.sala_id || !rawData.aluno_id || !rawData.descricao || !rawData.atendimento_professor) {
+            mostrarMensagem('Por favor, preencha todos os campos obrigatórios (marcados com *) antes de registrar a ocorrência.', 'danger');
+            return;
         }
         
-        mostrarMensagem(result.message, 'success');
-        
-        // Limpar formulário após o envio
-        document.getElementById('ocorrencia-form').reset();
-        document.getElementById('tutor').value = '';
-        atualizarAlunos(); // Recarrega os alunos após o reset do formulário
+        mostrarMensagem('Registrando ocorrência...', 'warning');
 
-    } catch (error) {
-        console.error("Erro ao registrar a ocorrência:", error);
-        mostrarMensagem('Erro ao registrar a ocorrência. ' + error.message, 'danger');
-    }
-}
+        try {
+            const response = await fetch('/api/registrar_ocorrencia', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(rawData),
+            });
+            
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Erro desconhecido ao registrar');
+            }
+            
+            mostrarMensagem(result.message, 'success');
             
             // Limpar formulário após o envio
             document.getElementById('ocorrencia-form').reset();
             document.getElementById('tutor').value = '';
-            atualizarAlunos();
+            atualizarAlunos(); 
 
         } catch (error) {
             console.error("Erro ao registrar a ocorrência:", error);
             mostrarMensagem('Erro ao registrar a ocorrência. ' + error.message, 'danger');
         }
     }
-</script>
+    </script>
     <style>
         /* Estilos base para o formulário */
         .form-select, .form-input, .form-textarea {
             width: 100%;
             padding: 0.75rem;
             border-radius: 0.5rem;
-            background-color: #374151; 
-            color: #f3f4f6; 
-            border: 1px solid #1E293B; 
+            background-color: #374151; /* input-bg */
+            color: #f3f4f6; /* text-light */
+            border: 1px solid #1E293B; /* dark-secondary border */
             transition: all 0.2s;
         }
         .form-select:focus, .form-input:focus, .form-textarea:focus {
             outline: none;
-            border-color: #10B981; 
-            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.5); 
+            border-color: #10B981; /* accent color */
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.5); /* accent shadow */
         }
         label {
-            color: #F8FAFC; 
+            color: #F8FAFC; /* text-light */
             font-weight: 500;
             display: block;
             margin-bottom: 0.5rem;
         }
         .input-readonly {
-            background-color: #1F2937; 
+            background-color: #1F2937; /* Slightly darker background for readonly */
             cursor: not-allowed;
             opacity: 0.7;
         }
         html, body { height: 100%; }
         #app-container { min-height: 100vh; }
+        .bg-accent { background-color: #10B981; }
+        .bg-danger { background-color: #DC2626; }
+        .bg-dark-secondary { background-color: #1E293B; }
+        /* Adicionei esta classe que estava faltando no seu CSS original */
+        .text-yellow-400 { color: #FBBF24; }
     </style>
 </head>
 <body class="bg-dark-primary font-sans text-text-light" onload="submeterOcorrencia">
@@ -384,6 +369,7 @@
 </body>
 
 </html>
+
 
 
 
