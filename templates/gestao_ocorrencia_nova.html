@@ -169,52 +169,68 @@
     }
 
     // LÓGICA DE SUBMISSÃO (CREATE) - USANDO ROTA FLASK/SUPABASE
-    async function submeterOcorrencia(event) {
-        event.preventDefault();
+ async function submeterOcorrencia(event) {
+    event.preventDefault();
+    
+    // Captura os IDs diretamente dos campos <select>
+    const selectedProfId = document.getElementById('prof-responsavel').value;
+    const selectedSalaId = document.getElementById('sala').value;
+    const selectedAlunoId = document.getElementById('aluno').value;
+
+    // Busca os metadados do aluno para os campos de display (nome do aluno e nome do tutor)
+    const aluno = alunosDataGlobal.find(a => String(a.id) === selectedAlunoId) || {};
+    
+    const rawData = {
+        prof_id: selectedProfId, // ID do Professor
+        sala_id: selectedSalaId, // ID da Sala
+        aluno_id: selectedAlunoId, // ID do Aluno
         
-        const selectedAlunoId = document.getElementById('aluno').value;
-        const selectedSalaId = document.getElementById('sala').value;
-        const aluno = alunosDataGlobal.find(a => String(a.id) === selectedAlunoId) || {};
+        descricao: document.getElementById('descricao-ocorrencia').value,
+        atendimento_professor: document.getElementById('atendimento-professor').value,
         
-        const rawData = {
-            prof_id: document.getElementById('prof-responsavel').value,
-            sala_id: selectedSalaId,
-            aluno_id: selectedAlunoId,
-            descricao: document.getElementById('descricao-ocorrencia').value,
-            atendimento_professor: document.getElementById('atendimento-professor').value,
-            
-            solicitar_tutor: document.getElementById('solicitar-tutor').checked,
-            solicitar_coordenacao: document.getElementById('solicitar-coordenacao').checked,
-            solicitar_gestao: document.getElementById('solicitar-gestao').checked,
-            
-            // Campos de Display (Se o backend precisar para log ou tabela)
-            aluno_nome: aluno.nome,
-            tutor_nome: aluno.tutor_nome,
-        };
+        solicitar_tutor: document.getElementById('solicitar-tutor').checked,
+        solicitar_coordenacao: document.getElementById('solicitar-coordenacao').checked,
+        solicitar_gestao: document.getElementById('solicitar-gestao').checked,
         
-        // Validação
-        if (!rawData.prof_id || !rawData.sala_id || !rawData.aluno_id || !rawData.descricao || !rawData.atendimento_professor) {
-            mostrarMensagem('Por favor, preencha todos os campos obrigatórios (marcados com *) antes de registrar a ocorrência.', 'danger');
-            return;
+        // Campos de Display (Display names, que agora a tabela 'ocorrencias' aceita)
+        aluno_nome: aluno.nome || 'N/A',
+        tutor_nome: aluno.tutor_nome || 'N/A',
+    };
+    
+    // Validação robusta
+    if (!rawData.prof_id || !rawData.sala_id || !rawData.aluno_id || !rawData.descricao || !rawData.atendimento_professor) {
+        mostrarMensagem('Por favor, preencha todos os campos obrigatórios (marcados com *) antes de registrar a ocorrência.', 'danger');
+        return;
+    }
+    
+    mostrarMensagem('Registrando ocorrência...', 'warning');
+
+    try {
+        // Rota POST /api/registrar_ocorrencia (Tabela 'ocorrencias' no app.py)
+        const response = await fetch('/api/registrar_ocorrencia', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(rawData),
+        });
+        
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.error || 'Erro desconhecido ao registrar');
         }
         
-        mostrarMensagem('Registrando ocorrência...', 'warning');
+        mostrarMensagem(result.message, 'success');
+        
+        // Limpar formulário após o envio
+        document.getElementById('ocorrencia-form').reset();
+        document.getElementById('tutor').value = '';
+        atualizarAlunos(); // Recarrega os alunos após o reset do formulário
 
-        try {
-            // Rota POST /api/registrar_ocorrencia (No seu app.py)
-            const response = await fetch('/api/registrar_ocorrencia', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(rawData),
-            });
-            
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.error || 'Erro desconhecido ao registrar');
-            }
-            
-            mostrarMensagem(result.message, 'success');
+    } catch (error) {
+        console.error("Erro ao registrar a ocorrência:", error);
+        mostrarMensagem('Erro ao registrar a ocorrência. ' + error.message, 'danger');
+    }
+}
             
             // Limpar formulário após o envio
             document.getElementById('ocorrencia-form').reset();
@@ -368,6 +384,7 @@
 </body>
 
 </html>
+
 
 
 
