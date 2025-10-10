@@ -260,7 +260,7 @@ def api_get_funcionarios():
     except Exception as e:
         return jsonify({"error": f"Erro ao buscar funcionários: {e}", "status": 500}), 500
 
-# ROTA 3: API GET: Listagem de Alunos por Sala (Filtro Cascata)
+# ROTA 3: API GET — Listagem de Alunos por Sala (com nome do Tutor)
 @app.route('/api/alunos_por_sala/<sala_id>', methods=['GET'])
 def api_get_alunos_por_sala(sala_id):
     """
@@ -270,11 +270,11 @@ def api_get_alunos_por_sala(sala_id):
     try:
         sala_id_bigint = int(sala_id)
 
-        # Faz o SELECT correto conforme os nomes reais das colunas
-        # Usa o join para buscar o nome do tutor na tabela d_funcionarios
+        # SELECT usando nomes reais das colunas
+        # e join correto com d_funcionarios (via tutor_id → id)
         response = (
             supabase.table('d_alunos')
-            .select('id, nome, tutor_id, d_funcionarios!tutor_id_fkey(nome)')
+            .select('id, nome, tutor_id, d_funcionarios!d_alunos_tutor_id_fkey(nome)')
             .eq('sala_id', sala_id_bigint)
             .order('nome')
             .execute()
@@ -1194,6 +1194,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
