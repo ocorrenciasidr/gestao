@@ -263,24 +263,43 @@ def api_get_funcionarios():
 # ROTA 3: API GET: Listagem de Alunos por Sala (Filtro Cascata)
 @app.route('/api/alunos_por_sala/<sala_id>', methods=['GET'])
 def api_get_alunos_por_sala(sala_id):
+    """
+    Retorna todos os alunos vinculados a uma sala específica,
+    incluindo o nome do tutor (quando houver).
+    """
     try:
-        sala_id_bigint = int(sala_id) 
-        # ATENÇÃO: Verifique se o nome da Foreign Key é fk_tutor_id e fk_sala_id na sua d_alunos.
-        response = supabase.table('d_alunos').select('id, nome, fk_tutor_id, d_funcionarios!fk_tutor_id_fkey(nome)').eq('fk_sala_id', sala_id_bigint).order('nome').execute()
-        
+        sala_id_bigint = int(sala_id)
+
+        # Faz o SELECT correto conforme os nomes reais das colunas
+        # Usa o join para buscar o nome do tutor na tabela d_funcionarios
+        response = (
+            supabase.table('d_alunos')
+            .select('id, nome, tutor_id, d_funcionarios!tutor_id_fkey(nome)')
+            .eq('sala_id', sala_id_bigint)
+            .order('nome')
+            .execute()
+        )
+
         alunos_raw = handle_supabase_response(response)
         alunos = []
+
         for a in alunos_raw:
-             tutor_nome = a['d_funcionarios']['nome'] if a['d_funcionarios'] else 'Tutor Não Definido'
-             alunos.append({
-                 "id": str(a['id']), 
-                 "nome": a['nome'],
-                 "tutor_id": str(a['fk_tutor_id']) if a['fk_tutor_id'] else None,
-                 "tutor_nome": tutor_nome
-             })
+            tutor_nome = (
+                a['d_funcionarios']['nome']
+                if a.get('d_funcionarios') and a['d_funcionarios']
+                else 'Tutor Não Definido'
+            )
+            alunos.append({
+                "id": str(a['id']),
+                "nome": a['nome'],
+                "tutor_id": str(a['tutor_id']) if a['tutor_id'] else None,
+                "tutor_nome": tutor_nome
+            })
 
         return jsonify(alunos)
+
     except Exception as e:
+        logging.error(f"Erro ao buscar alunos por sala: {e}")
         return jsonify({"error": f"Erro ao buscar alunos por sala: {e}", "status": 500}), 500
 
 # ROTA 4: API GET: Listagem de Alunos por Tutor (Filtro Cascata)
@@ -1175,6 +1194,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
