@@ -469,10 +469,10 @@ def api_get_ocorrencias():
 def api_ocorrencias_abertas():
     try:
         # Busca a ocorrência e faz JOIN com professor e sala para obter os nomes.
-        # CORRIGIDO: sala_id(sala) para buscar a coluna correta
+        # CORRIGIDO: Selecionando 'numero' como ID primário
         response = supabase.table('ocorrencias').select(
             """
-            id, 
+            numero,             
             data_hora, 
             status, 
             aluno_nome,
@@ -482,7 +482,7 @@ def api_ocorrencias_abertas():
             solicitado_gestao,
             
             professor_id(nome),     
-            sala_id(sala)       
+            sala_id(sala)           
             """
         ).eq('status', 'Aberta').order('data_hora', desc=True).execute()
 
@@ -492,10 +492,9 @@ def api_ocorrencias_abertas():
         ocorrencias = []
         for item in ocorrencias_data:
             ocorrencia = {
-                "id": item.get('id'),
+                "id": item.get('numero'),   # <--- AGORA USA O 'NUMERO' E MAPEIA PARA 'ID'
                 "status": item.get('status'),
                 
-                # Nomes do JOIN: professor_id usa 'nome', sala_id usa 'sala'
                 "professor_nome": item.get('professor_id', {}).get('nome', 'N/A'),
                 "sala_nome": item.get('sala_id', {}).get('sala', 'N/A'),
                 
@@ -1344,6 +1343,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
