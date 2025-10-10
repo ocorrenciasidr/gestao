@@ -874,7 +874,6 @@ def api_registrar_ocorrencia():
         aluno_id_bigint = int(data.get('aluno_id')) if data.get('aluno_id') else None
         sala_id_bigint = int(data.get('sala_id')) if data.get('sala_id') else None
     except ValueError:
-        # Se os IDs não puderem ser convertidos, tratamos como nulo
         prof_id_bigint, aluno_id_bigint, sala_id_bigint = None, None, None
 
     # Campos de texto obrigatórios
@@ -887,19 +886,25 @@ def api_registrar_ocorrencia():
 
     try:
         nova_ocorrencia = {
-            # Nomes das colunas da tabela 'ocorrencias'
+            # CHAVES ESTRANGEIRAS
             "professor_id": prof_id_bigint, 
             "aluno_id": aluno_id_bigint, 
             "sala_id": sala_id_bigint, 
+            
+            # DATA/HORA DE REGISTRO (Usamos esta coluna no Flask)
             "data_hora": "now()",
+            
+            # CAMPOS DE TEXTO
             "descricao": descricao,
             "atendimento_professor": atendimento_professor,
             
-            # Colunas de Display (Aceitas pela tabela 'ocorrencias' que criamos)
+            # COLUNAS ANTIGAS (dco, hco, etc.) SERÃO NULL AGORA QUE REMOVEMOS O NOT NULL
+            
+            # CAMPOS DE DISPLAY
             "aluno_nome": data.get('aluno_nome'),
             "tutor_nome": data.get('tutor_nome'),
             
-            # Metadados
+            # METADADOS
             "tipo": data.get('tipo', 'Comportamental'), 
             "status": "Aberta",
             "solicitado_tutor": data.get('solicitar_tutor', False),
@@ -1269,6 +1274,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
