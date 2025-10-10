@@ -242,7 +242,7 @@ def api_get_salas():
     try:
         # SELECT nas colunas reais e ORDER pela coluna 'sala'
         response = supabase.table('d_salas').select('id, sala, nivel_ensino').order('sala').execute()
-        # Mapeia 'sala' para 'nome' na resposta JSON para consistência
+        # Mapeia 'sala' para 'sala' na resposta JSON para consistência
         salas = [{"id": str(s['id']), "nome": f"{s['sala']} ({s['nivel_ensino']})", "nivel_ensino": s['nivel_ensino']} for s in handle_supabase_response(response)]
         return jsonify(salas)
     except Exception as e:
@@ -1175,4 +1175,5 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
