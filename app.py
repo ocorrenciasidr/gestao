@@ -665,11 +665,13 @@ def api_get_guia_aprendizagem():
 # =================================================================
 # ROTAS DA API (POST - CADASTROS E TRANSAÇÕES)
 # =================================================================
-from datetime import datetime
-from flask import request, jsonify
 
 @app.route("/api/registrar_atendimento/<int:ocorrencia_id>", methods=["POST"])
 def registrar_atendimento(ocorrencia_id):
+    """
+    Atualiza o texto e data do atendimento (tutor, coordenação ou gestão).
+    Se todos os três atendimentos estiverem registrados, marca como FINALIZADA.
+    """
     try:
         data = request.get_json()
         nivel = data.get("nivel")
@@ -690,20 +692,28 @@ def registrar_atendimento(ocorrencia_id):
         campo_texto, campo_data = campos[nivel]
         agora = datetime.now().isoformat()
 
+        # Atualiza o atendimento do nível correspondente
         supabase.table("ocorrencias").update({
             campo_texto: texto,
             campo_data: agora
         }).eq("id", ocorrencia_id).execute()
 
-        # Verifica se já foi atendido por todos
+        # Busca os atendimentos atuais
         result = supabase.table("ocorrencias").select(
             "dt_atendimento_tutor, dt_atendimento_coordenacao, dt_atendimento_gestao"
         ).eq("id", ocorrencia_id).single().execute()
+
+        if not result or not result.data:
+            return jsonify({"error": "Ocorrência não encontrada"}), 404
+
         occ = result.data
 
-        if all([occ.get("dt_atendimento_tutor"),
-                occ.get("dt_atendimento_coordenacao"),
-                occ.get("dt_atendimento_gestao")]):
+        # Se todos os atendimentos foram realizados, finaliza a ocorrência
+        if all([
+            occ.get("dt_atendimento_tutor"),
+            occ.get("dt_atendimento_coordenacao"),
+            occ.get("dt_atendimento_gestao")
+        ]):
             supabase.table("ocorrencias").update({"status": "FINALIZADA"}).eq("id", ocorrencia_id).execute()
 
         return jsonify({"success": True})
@@ -711,7 +721,7 @@ def registrar_atendimento(ocorrencia_id):
     except Exception as e:
         print("Erro registrar_atendimento:", e)
         return jsonify({"error": str(e)}), 500
-
+        
 # ROTA 13: API POST: Cadastro de Sala
 @app.route('/api/cadastrar_sala', methods=['POST'])
 def api_cadastrar_sala():
@@ -1426,6 +1436,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
