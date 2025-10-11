@@ -112,14 +112,36 @@
         // FUNÇÕES DE FILTRO E RENDERIZAÇÃO
         // =======================================================
         function preencherFiltrosEstaticos(ocorrencias) {
-            const filterSalaSelect = document.getElementById('filter-sala');
-            const selectedSala = filterSalaSelect.value;
-            filterSalaSelect.innerHTML = '<option value="">TODAS AS SALAS</option>';
-            const salas = [...new Set(ocorrencias.map(o => o.sala_nome).filter(Boolean))].sort();
-            salas.forEach(sala => filterSalaSelect.insertAdjacentHTML('beforeend', `<option value="${sala}">${sala}</option>`));
-            if (selectedSala) filterSalaSelect.value = selectedSala;
-        }
+    const filterSalaSelect = document.getElementById('filter-sala');
+    filterSalaSelect.innerHTML = '<option value="">TODAS AS SALAS</option>';
+    
+    // O campo 'sala_nome' agora é adicionado pelo backend, tornando este código mais simples e seguro.
+    const salas = [...new Set(ocorrencias.map(o => o.sala_nome).filter(Boolean))].sort();
+    
+    salas.forEach(sala => {
+        filterSalaSelect.insertAdjacentHTML('beforeend', `<option value="${sala}">${sala}</option>`);
+    });
+}
 
+        function preencherFiltroAluno() {
+    const filterSala = document.getElementById('filter-sala').value;
+    const filterAlunoSelect = document.getElementById('filter-aluno');
+    filterAlunoSelect.innerHTML = '<option value="">TODOS OS ALUNOS</option>';
+    
+    const ocorrenciasFiltradas = filterSala 
+        ? finalizadasOcorrencias.filter(o => o.sala_nome === filterSala) 
+        : finalizadasOcorrencias;
+        
+    const alunos = [...new Set(ocorrenciasFiltradas.map(o => o.aluno_nome).filter(Boolean))].sort();
+    
+    alunos.forEach(aluno => {
+        filterAlunoSelect.insertAdjacentHTML('beforeend', `<option value="${aluno}">${aluno}</option>`);
+    });
+
+    // É importante chamar a aplicação dos filtros aqui para atualizar a tabela
+    aplicarFiltros(); 
+}
+        
         window.preencherFiltroAluno = function() {
             const filterSala = document.getElementById('filter-sala').value;
             const filterAlunoSelect = document.getElementById('filter-aluno');
@@ -343,4 +365,5 @@
 
 </body>
 </html>
+
 
