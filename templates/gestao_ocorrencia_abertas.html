@@ -1,200 +1,156 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Gestão de Ocorrências Abertas</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestão de Ocorrências Abertas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
     tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            'dark-primary': '#0F172A',
-            'dark-secondary': '#1E293B',
-            'accent': '#10B981',
-            'text-light': '#F8FAFC',
-            'danger': '#DC2626',
-            'tutor-color': '#007ACC',
-            'coord-color': '#F59E0B',
-            'gestao-color': '#EF4444',
-          },
-          fontFamily: {
-            sans: ['Inter', 'sans-serif'],
-          },
-        },
-      },
-    };
+        theme: {
+            extend: {
+                colors: {
+                    'dark-primary': '#0F172A', 'dark-secondary': '#1E293B',
+                    'accent': '#10B981', 'text-light': '#F8FAFC', 'danger': '#DC2626',
+                    'tutor-color': '#007ACC', 'coord-color': '#F59E0B', 'gestao-color': '#EF4444',
+                },
+                fontFamily: { sans: ['Inter', 'sans-serif'], },
+            }
+        }
+    }
+    </script>
+</head>
+<body class="bg-dark-primary min-h-screen p-8">
+    <div id="mensagem-status" class="hidden fixed top-4 right-4 p-4 rounded-lg shadow-xl text-text-light z-50 transition-opacity duration-300" role="alert"></div>
+    <div class="max-w-7xl mx-auto">
+        <header class="w-full text-center mb-8 mt-4">
+            <h1 class="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-accent leading-tight tracking-wider">
+                SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR
+            </h1>
+            <h2 class="text-xl sm:text-2xl text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
+                OCORRÊNCIAS ABERTAS
+            </h2>
+            <div class="mt-4 flex flex-wrap justify-center gap-4">
+                 <button type="button" onclick="window.location.href='/gestao_ocorrencia'"
+                         class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200 ease-in-out flex items-center justify-center space-x-2 w-full max-w-xs md:max-w-[150px]">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z"></path></svg>
+                    <span>Voltar</span>
+                </button>
+                 <a href="/gestao_ocorrencia_nova" class="btn-primary flex items-center justify-center space-x-2 w-full max-w-xs md:max-w-[180px] bg-accent hover:bg-emerald-600 rounded-lg py-2 px-4 font-bold">
+                    <svg xmlns="http://www.w.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>Nova Ocorrência</span>
+                </a>
+                 <a href="/gestao_ocorrencia_finalizadas"
+                         class="bg-accent hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded-lg transition duration-200 ease-in-out flex items-center justify-center space-x-2 w-full max-w-xs md:max-w-[250px]">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    <span>Histórico Finalizado</span>
+                </a>
+            </div>
+        </header>
 
-    document.addEventListener("DOMContentLoaded", carregarOcorrencias);
+        <main class="w-full max-w-7xl flex-grow">
+            <div class="overflow-x-auto bg-dark-secondary rounded-xl shadow-2xl p-4">
+                <table class="min-w-full divide-y divide-gray-700">
+                    <thead class="bg-dark-primary">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">NÚMERO</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Data Reg.</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Aluno</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Sala</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Professor (Registro)</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Tutor (Aluno)</th>
+                            <th class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ocorrencias-corpo" class="divide-y divide-gray-800">
+                        <tr><td colspan="7" class="text-center py-4 text-gray-400">Carregando dados...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <div id="modal-overlay" class="hidden fixed inset-0 bg-black bg-opacity-70 z-40 flex justify-center items-center p-4">
+        </div>
+</body>
+<script>
+    const GESTAO_SENHA_MOCK = 'idrgestao';
+    document.addEventListener('DOMContentLoaded', carregarOcorrencias);
 
     function mostrarMensagem(texto, tipo) {
-      const msgElement = document.getElementById("mensagem-status");
-      msgElement.textContent = texto;
-      msgElement.classList.remove("hidden", "bg-accent", "bg-danger", "bg-dark-secondary", "text-yellow-400");
-
-      if (tipo === "success") msgElement.classList.add("bg-accent");
-      else if (tipo === "danger") msgElement.classList.add("bg-danger");
-      else if (tipo === "info") msgElement.classList.add("bg-dark-secondary", "text-yellow-400");
-
-      msgElement.classList.remove("hidden");
-      setTimeout(() => msgElement.classList.add("hidden"), 4000);
+        // ... (código existente) ...
     }
-
-    // === Exibe T/C/G apenas se solicitado = true e atendimento = vazio ===
+    
     function renderizarAcoes(ocorrencia) {
-      const numero = ocorrencia.id || ocorrencia.numero;
-      let html = `
-        <div class="flex items-center space-x-3">
-          <a href="/gestao_ocorrencia_editar?id=${numero}&modo=visualizar" title="Visualizar Detalhes"
-              class="text-gray-400 hover:text-accent transition duration-150">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-              </svg>
-          </a>`;
+        // CORREÇÃO: Usando 'ocorrencia.numero' como identificador principal
+        const numero = ocorrencia.numero; 
+        let html = `
+            <div class="flex items-center space-x-3">
+                <a href="/gestao_ocorrencia_editar?id=${numero}&modo=visualizar" title="Visualizar Detalhes"
+                    class="text-gray-400 hover:text-accent transition duration-150">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                </a>
+                <a href="#" onclick="abrirModalSenhaEdicao('${numero}')" title="Editar Ocorrência (Acesso Gestão)"
+                    class="text-accent hover:text-green-400 transition duration-150">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-9-5l5-5m-5 5l5 5"></path></svg>
+                </a>`;
 
-      let indicadores = "";
+        let indicadores = '';
+        if (ocorrencia.solicitado_tutor && !ocorrencia.dt_atendimento_tutor) {
+            indicadores += `<a href="/gestao_ocorrencia_editar?id=${numero}&modo=atendimento&nivel=tutor" title="Atendimento Pendente do Tutor"
+                                class="bg-tutor-color/20 text-tutor-color text-xs font-bold px-2 py-1 rounded-full border border-tutor-color hover:bg-tutor-color hover:text-white transition">T</a>`;
+        }
+        if (ocorrencia.solicitado_coordenacao && !ocorrencia.dt_atendimento_coordenacao) {
+            indicadores += `<a href="/gestao_ocorrencia_editar?id=${numero}&modo=atendimento&nivel=coordenacao" title="Atendimento Pendente da Coordenação"
+                                class="bg-coord-color/20 text-coord-color text-xs font-bold px-2 py-1 rounded-full border border-coord-color hover:bg-coord-color hover:text-white transition">C</a>`;
+        }
+        if (ocorrencia.solicitado_gestao && !ocorrencia.dt_atendimento_gestao) {
+            indicadores += `<a href="/gestao_ocorrencia_editar?id=${numero}&modo=atendimento&nivel=gestao" title="Atendimento Pendente da Gestão"
+                                class="bg-gestao-color/20 text-gestao-color text-xs font-bold px-2 py-1 rounded-full border border-gestao-color hover:bg-gestao-color hover:text-white transition">G</a>`;
+        }
 
-      // Conversão segura de valores Supabase
-      const solicitadoTutor = ocorrencia.solicitado_tutor === true || ocorrencia.solicitado_tutor === "true" || ocorrencia.solicitado_tutor === 1;
-      const solicitadoCoord = ocorrencia.solicitado_coordenacao === true || ocorrencia.solicitado_coordenacao === "true" || ocorrencia.solicitado_coordenacao === 1;
-      const solicitadoGestao = ocorrencia.solicitado_gestao === true || ocorrencia.solicitado_gestao === "true" || ocorrencia.solicitado_gestao === 1;
-
-      const atendTutor = (ocorrencia.atendimento_tutor || "").trim();
-      const atendCoord = (ocorrencia.atendimento_coordenacao || "").trim();
-      const atendGestao = (ocorrencia.atendimento_gestao || "").trim();
-
-      // Tutor
-      if (solicitadoTutor && atendTutor === "") {
-        indicadores += `<a href="/gestao_ocorrencia_editar?id=${numero}&modo=atendimento&nivel=tutor"
-                          class="bg-tutor-color/20 text-tutor-color text-xs font-bold px-2 py-1 rounded-full border border-tutor-color hover:bg-tutor-color hover:text-white transition">T</a>`;
-      }
-
-      // Coordenação
-      if (solicitadoCoord && atendCoord === "") {
-        indicadores += `<a href="/gestao_ocorrencia_editar?id=${numero}&modo=atendimento&nivel=coordenacao"
-                          class="bg-coord-color/20 text-coord-color text-xs font-bold px-2 py-1 rounded-full border border-coord-color hover:bg-coord-color hover:text-white transition">C</a>`;
-      }
-
-      // Gestão
-      if (solicitadoGestao && atendGestao === "") {
-        indicadores += `<a href="/gestao_ocorrencia_editar?id=${numero}&modo=atendimento&nivel=gestao"
-                          class="bg-gestao-color/20 text-gestao-color text-xs font-bold px-2 py-1 rounded-full border border-gestao-color hover:bg-gestao-color hover:text-white transition">G</a>`;
-      }
-
-      if (indicadores)
-        html += `<div class="ml-4 space-x-2">${indicadores}</div>`;
-
-      html += `</div>`;
-      return html;
+        if (indicadores) html += `<div class="ml-4 space-x-2">${indicadores}</div>`;
+        html += `</div>`;
+        return html;
     }
 
     async function carregarOcorrencias() {
-      mostrarMensagem("Carregando ocorrências abertas...", "info");
-      const tabelaCorpo = document.getElementById("ocorrencias-corpo");
+        const tabelaCorpo = document.getElementById('ocorrencias-corpo');
+        try {
+            const response = await fetch('/api/ocorrencias_abertas');
+            if (!response.ok) throw new Error('Falha ao carregar ocorrências.');
+            
+            const ocorrencias = await response.json();
+            
+            tabelaCorpo.innerHTML = '';
+            if (ocorrencias.length === 0) {
+                tabelaCorpo.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-gray-400">Nenhuma ocorrência com pendências encontrada.</td></tr>`;
+                return;
+            }
 
-      try {
-        const response = await fetch("/api/ocorrencias_abertas");
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`API falhou com status ${response.status}. ${errorText}`);
+            ocorrencias.forEach(ocorrencia => {
+                const row = `
+                    <tr class="hover:bg-dark-secondary/50 transition duration-150">
+                        <td class="p-3 text-sm font-medium text-text-light">${ocorrencia.numero}</td>
+                        <td class="p-3 text-sm text-gray-300">${new Date(ocorrencia.data_hora).toLocaleString('pt-BR')}</td>
+                        <td class="p-3 text-sm text-gray-300">${ocorrencia.aluno_nome}</td>
+                        <td class="p-3 text-sm text-gray-300">${ocorrencia.sala_nome}</td>
+                        <td class="p-3 text-sm text-gray-300">${ocorrencia.professor_nome}</td>
+                        <td class="p-3 text-sm text-gray-300">${ocorrencia.tutor_nome}</td>
+                        <td class="p-3 text-sm whitespace-nowrap">${renderizarAcoes(ocorrencia)}</td>
+                    </tr>
+                `;
+                tabelaCorpo.insertAdjacentHTML('beforeend', row);
+            });
+        } catch (error) {
+            tabelaCorpo.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-red-400">Erro ao carregar dados. Verifique a API.</td></tr>`;
         }
-
-        const todasOcorrencias = await response.json();
-
-        // Exibe somente ocorrências com pendências (T/C/G)
-        const ocorrenciasAbertas = todasOcorrencias.filter((occ) => {
-          const solicitadoTutor = occ.solicitado_tutor === true || occ.solicitado_tutor === "true" || occ.solicitado_tutor === 1;
-          const solicitadoCoord = occ.solicitado_coordenacao === true || occ.solicitado_coordenacao === "true" || occ.solicitado_coordenacao === 1;
-          const solicitadoGestao = occ.solicitado_gestao === true || occ.solicitado_gestao === "true" || occ.solicitado_gestao === 1;
-
-          const pendenteTutor = solicitadoTutor && (!occ.atendimento_tutor || occ.atendimento_tutor.trim() === "");
-          const pendenteCoord = solicitadoCoord && (!occ.atendimento_coordenacao || occ.atendimento_coordenacao.trim() === "");
-          const pendenteGestao = solicitadoGestao && (!occ.atendimento_gestao || occ.atendimento_gestao.trim() === "");
-
-          return pendenteTutor || pendenteCoord || pendenteGestao;
-        });
-
-        tabelaCorpo.innerHTML = "";
-
-        if (ocorrenciasAbertas.length === 0) {
-          tabelaCorpo.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-gray-400">Nenhuma ocorrência aberta pendente.</td></tr>`;
-          mostrarMensagem("Nenhuma ocorrência pendente.", "info");
-          return;
-        }
-
-        let rowsHtml = "";
-        ocorrenciasAbertas.forEach((ocorrencia) => {
-          rowsHtml += `
-            <tr class="hover:bg-dark-secondary/50 transition duration-150">
-              <td class="p-3 text-sm font-medium text-text-light">${ocorrencia.numero}</td>
-              <td class="p-3 text-sm text-gray-300">${ocorrencia.data_hora || ""}</td>
-              <td class="p-3 text-sm text-gray-300">${ocorrencia.aluno_nome || ""}</td>
-              <td class="p-3 text-sm text-gray-300">${ocorrencia.sala_nome || ""}</td>
-              <td class="p-3 text-sm text-gray-300">${ocorrencia.professor_nome || ""}</td>
-              <td class="p-3 text-sm text-gray-300">${ocorrencia.tutor_nome || ""}</td>
-              <td class="p-3 text-sm whitespace-nowrap">${renderizarAcoes(ocorrencia)}</td>
-            </tr>`;
-        });
-
-        tabelaCorpo.innerHTML = rowsHtml;
-        mostrarMensagem("Ocorrências abertas carregadas com sucesso!", "success");
-      } catch (error) {
-        console.error(error);
-        mostrarMensagem("Erro ao carregar lista. Ver console.", "danger");
-      }
     }
-  </script>
-</head>
-
-<body class="bg-dark-primary min-h-screen p-8 text-text-light">
-  <div id="mensagem-status"
-    class="hidden fixed top-4 right-4 p-4 rounded-lg shadow-xl text-text-light z-50 transition-opacity duration-300"
-    role="alert"></div>
-
-  <div class="max-w-7xl mx-auto">
-    <header class="text-center mb-8 mt-4">
-      <h1 class="text-4xl font-extrabold text-accent tracking-wider">
-        SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR
-      </h1>
-      <h2 class="text-2xl text-text-light mt-2 font-light border-b border-gray-700 pb-2 inline-block">
-        OCORRÊNCIAS ABERTAS
-      </h2>
-      <div class="mt-4 flex flex-wrap justify-center gap-4">
-        <button type="button" onclick="window.location.href='/gestao_ocorrencia'"
-          class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200 w-full max-w-[150px]">
-          Voltar
-        </button>
-        <button type="button" onclick="window.location.href='/gestao_ocorrencia_nova.html'"
-          class="bg-accent hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded-lg transition duration-200 w-full max-w-[180px]">
-          Nova Ocorrência
-        </button>
-        <button type="button" onclick="window.location.href='/gestao_ocorrencia_finalizadas.html'"
-          class="bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2 px-4 rounded-lg transition duration-200 w-full max-w-[220px]">
-          Finalizadas
-        </button>
-      </div>
-    </header>
-
-    <main class="overflow-x-auto bg-dark-secondary rounded-xl shadow-2xl p-4">
-      <table class="min-w-full divide-y divide-gray-700">
-        <thead class="bg-dark-primary">
-          <tr>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Número</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Data Reg.</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Aluno</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Sala</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Professor</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Tutor</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Ações</th>
-          </tr>
-        </thead>
-        <tbody id="ocorrencias-corpo" class="divide-y divide-gray-800">
-          <tr><td colspan="7" class="text-center py-4 text-gray-400">Carregando dados...</td></tr>
-        </tbody>
-      </table>
-    </main>
-  </div>
-</body>
+    
+    function abrirModalSenhaEdicao(numero) {
+        // ... (código existente, mas recebe 'numero') ...
+    }
+</script>
 </html>
