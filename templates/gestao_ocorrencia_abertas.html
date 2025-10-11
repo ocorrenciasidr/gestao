@@ -31,33 +31,26 @@
     function mostrarMensagem(texto, tipo) {
       const msgElement = document.getElementById("mensagem-status");
       msgElement.textContent = texto;
-      msgElement.classList.remove(
-        "hidden",
-        "bg-accent",
-        "bg-danger",
-        "bg-dark-secondary",
-        "text-yellow-400"
-      );
+      msgElement.classList.remove("hidden", "bg-accent", "bg-danger", "bg-dark-secondary", "text-yellow-400");
 
       if (tipo === "success") msgElement.classList.add("bg-accent");
       else if (tipo === "danger") msgElement.classList.add("bg-danger");
-      else if (tipo === "info")
-        msgElement.classList.add("bg-dark-secondary", "text-yellow-400");
+      else if (tipo === "info") msgElement.classList.add("bg-dark-secondary", "text-yellow-400");
 
       msgElement.classList.remove("hidden");
       setTimeout(() => msgElement.classList.add("hidden"), 4000);
     }
 
-    // === Lógica de exibição das ações (T, C, G) ===
+    // === Exibe T/C/G apenas se solicitado = true e atendimento = vazio ===
     function renderizarAcoes(ocorrencia) {
-      const numero = ocorrencia.numero;
+      const numero = ocorrencia.id || ocorrencia.numero;
       let html = `
         <div class="flex items-center space-x-3">
           <a href="/gestao_ocorrencia_editar?id=${numero}&modo=visualizar" title="Visualizar Detalhes"
               class="text-gray-400 hover:text-accent transition duration-150">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
               </svg>
           </a>`;
 
@@ -101,7 +94,7 @@
 
         const todasOcorrencias = await response.json();
 
-        // Exibe apenas ocorrências com pendências (T, C ou G)
+        // Exibe somente ocorrências com pendências (T/C/G)
         const ocorrenciasAbertas = todasOcorrencias.filter((occ) => {
           const pendenteTutor = occ.solicitado_tutor && (!occ.atendimento_tutor || occ.atendimento_tutor.trim() === "");
           const pendenteCoord = occ.solicitado_coordenacao && (!occ.atendimento_coordenacao || occ.atendimento_coordenacao.trim() === "");
@@ -112,7 +105,7 @@
         tabelaCorpo.innerHTML = "";
 
         if (ocorrenciasAbertas.length === 0) {
-          tabelaCorpo.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-gray-400">Nenhuma ocorrência pendente.</td></tr>`;
+          tabelaCorpo.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-gray-400">Nenhuma ocorrência aberta pendente.</td></tr>`;
           mostrarMensagem("Nenhuma ocorrência pendente.", "info");
           return;
         }
@@ -132,7 +125,7 @@
         });
 
         tabelaCorpo.innerHTML = rowsHtml;
-        mostrarMensagem("Ocorrências carregadas com sucesso!", "success");
+        mostrarMensagem("Ocorrências abertas carregadas com sucesso!", "success");
       } catch (error) {
         console.error(error);
         mostrarMensagem("Erro ao carregar lista. Ver console.", "danger");
@@ -156,16 +149,16 @@
       </h2>
       <div class="mt-4 flex flex-wrap justify-center gap-4">
         <button type="button" onclick="window.location.href='/gestao_ocorrencia'"
-          class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200 flex items-center justify-center space-x-2 w-full max-w-[150px]">
-          <span>Voltar</span>
+          class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200 w-full max-w-[150px]">
+          Voltar
         </button>
         <button type="button" onclick="window.location.href='/gestao_ocorrencia_nova.html'"
-          class="bg-accent hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded-lg transition duration-200 flex items-center justify-center space-x-2 w-full max-w-[180px]">
-          <span>Nova Ocorrência</span>
+          class="bg-accent hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded-lg transition duration-200 w-full max-w-[180px]">
+          Nova Ocorrência
         </button>
         <button type="button" onclick="window.location.href='/gestao_ocorrencia_finalizadas.html'"
-          class="bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2 px-4 rounded-lg transition duration-200 flex items-center justify-center space-x-2 w-full max-w-[220px]">
-          <span>Finalizadas</span>
+          class="bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2 px-4 rounded-lg transition duration-200 w-full max-w-[220px]">
+          Finalizadas
         </button>
       </div>
     </header>
