@@ -95,15 +95,24 @@
     }
 
     function preencherFormulario(data) {
+        // Campos de Visualização
         document.getElementById('display-aluno').value = data.aluno_nome || 'N/A';
-        document.getElementById('display-sala').value = data.sala_id || 'N/A';
+        // AJUSTE 1: Corrigido de data.sala_id para data.sala_nome
+        document.getElementById('display-sala').value = data.sala_nome || 'N/A'; 
         document.getElementById('display-tutor').value = data.tutor_nome || 'N/A';
+        // AJUSTE 2: Adicionado campo para o professor que registrou
+        document.getElementById('display-professor').value = data.professor_nome || 'N/A'; 
         document.getElementById('display-registro').value = formatarDataHora(data.data_hora);
+        
+        // Campos de Edição/Visualização
         document.getElementById('descricao-ocorrencia').value = data.descricao || '';
         document.getElementById('atendimento-professor').value = data.atendimento_professor || '';
+        
         document.getElementById('atendimento-tutor').value = data.atendimento_tutor || '';
         document.getElementById('atendimento-coordenacao').value = data.atendimento_coordenacao || '';
         document.getElementById('atendimento-gestao').value = data.atendimento_gestao || '';
+
+        // Labels de status
         document.getElementById('status-tutor').textContent = data.dt_atendimento_tutor ? 'ATENDIDO' : 'PENDENTE';
         document.getElementById('status-coordenacao').textContent = data.dt_atendimento_coordenacao ? 'ATENDIDO' : 'PENDENTE';
         document.getElementById('status-gestao').textContent = data.dt_atendimento_gestao ? 'ATENDIDO' : 'PENDENTE';
@@ -152,8 +161,9 @@
         }
     }
 
+
     // --- LÓGICA DE SUBMISSÃO (SALVAR ATENDIMENTO) ---
-    // ESTA FUNÇÃO IMPLEMENTA O PROCESSO QUE VOCÊ DESCREVEU
+
     async function salvarAtendimento(event) {
         event.preventDefault();
         const id = ocorrenciaDataGlobal.numero;
@@ -176,9 +186,6 @@
         mostrarMensagem('Registrando atendimento...', 'info');
 
         try {
-            // PASSO 1: Esta página envia o atendimento para o servidor.
-            // O servidor (backend) deve então atualizar o status da ocorrência no banco de dados.
-            // É NESTE PONTO que a "solicitação de atendimento vira não".
             const response = await fetch(`/api/registrar_atendimento/${id}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -196,12 +203,8 @@
             
             mostrarMensagem(`Atendimento ${nivelAtendimento.toUpperCase()} registrado com sucesso!`, 'success');
             
-            // PASSO 2: A página redireciona para a lista de ocorrências abertas.
-            // A página da lista, ao carregar, buscará os dados atualizados e não mostrará mais
-            // o "T", "C" ou "G" para esta ocorrência, pois ela já foi atendida.
-            // A lógica de "fazer o T sumir" acontece como consequência na PÁGINA SEGUINTE.
             setTimeout(() => {
-                window.location.href = 'gestao_ocorrencia_abertas';
+                window.location.href = 'gestao_ocorrencia_abertas.html';
             }, 1000);
 
         } catch (error) {
@@ -210,7 +213,6 @@
         }
     }
 
-    // --- LÓGICA DE EDIÇÃO COMPLETA (MOCK) ---
     function salvarEdicaoCompleta(event) {
          event.preventDefault();
          mostrarMensagem("Função de SALVAR EDIÇÃO COMPLETA ainda não implementada no backend.", 'info');
@@ -221,14 +223,19 @@
         body { background-color: #0F172A; font-family: 'Inter', sans-serif; }
         .bg-dark-secondary { background-color: #1E293B; }
         .text-text-light { color: #F8FAFC; }
-        .text-accent { color: #10B981; }
         .input-bg { background-color: #374151; color: #F8FAFC; }
         .input-readonly { background-color: #1F2937; cursor: not-allowed; opacity: 0.8; }
         .input-editable { background-color: #1E293B; border: 2px solid #10B981; }
         .btn-primary { background-color: #10B981; color: white; padding: 0.5rem 1rem; border-radius: 0.5rem; transition: background-color 0.2s; }
         label { display: block; margin-bottom: 0.25rem; font-weight: 500; }
-        textarea, input, label { color: #F8FAFC !important; border-color: #1E293B; }
-        textarea:read-only, input:read-only { background-color: #1F2937 !important; border-color: #1E293B !important; }
+        textarea, input, label {
+            color: #F8FAFC !important;
+            border-color: #1E293B;
+        }
+        textarea:read-only, input:read-only { 
+            background-color: #1F2937 !important;
+            border-color: #1E293B !important;
+        }
     </style>
 </head>
 <body class="bg-dark-primary min-h-screen p-8">
@@ -253,10 +260,13 @@
         </header>
 
         <main class="w-full max-w-5xl mx-auto">
+            
             <form id="edicao-form" onsubmit="salvarAtendimento(event)">
+                
                 <div class="bg-dark-secondary p-6 rounded-xl shadow-lg mb-6">
                     <h3 class="text-xl font-semibold mb-4 text-accent border-b border-gray-700 pb-2">Detalhes do Aluno e Registro</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        
                         <div>
                             <label for="display-aluno" class="text-sm">Aluno</label>
                             <input type="text" id="display-aluno" class="w-full input-bg input-readonly rounded-lg p-2" readonly>
@@ -266,10 +276,14 @@
                             <input type="text" id="display-sala" class="w-full input-bg input-readonly rounded-lg p-2" readonly>
                         </div>
                         <div>
-                            <label for="display-tutor" class="text-sm">Tutor</label>
+                            <label for="display-tutor" class="text-sm">Tutor (Aluno)</label>
                             <input type="text" id="display-tutor" class="w-full input-bg input-readonly rounded-lg p-2" readonly>
                         </div>
-                         <div class="md:col-span-3">
+                         <div>
+                            <label for="display-professor" class="text-sm">Professor (Registro)</label>
+                            <input type="text" id="display-professor" class="w-full input-bg input-readonly rounded-lg p-2" readonly>
+                        </div>
+                         <div class="md:col-span-2">
                             <label for="display-registro" class="text-sm">Data/Hora do Registro</label>
                             <input type="text" id="display-registro" class="w-full input-bg input-readonly rounded-lg p-2" readonly>
                         </div>
@@ -304,10 +318,12 @@
                 </div>
                 
                 <div class="w-full text-center mt-6">
-                    <button type="submit" id="btn-salvar-atendimento" class="w-full max-w-sm btn-primary py-3 font-bold hidden transition duration-200">
+                    <button type="submit" id="btn-salvar-atendimento" 
+                            class="w-full max-w-sm btn-primary py-3 font-bold hidden transition duration-200">
                         SALVAR ATENDIMENTO E FINALIZAR
                     </button>
-                    <button type="button" id="btn-salvar-edicao" onclick="salvarEdicaoCompleta(event)" class="w-full max-w-sm btn-primary py-3 font-bold hidden transition duration-200">
+                    <button type="button" id="btn-salvar-edicao" onclick="salvarEdicaoCompleta(event)"
+                            class="w-full max-w-sm btn-primary py-3 font-bold hidden transition duration-200">
                         SALVAR EDIÇÃO COMPLETA
                     </button>
                 </div>
@@ -322,7 +338,8 @@
                 LICENCIADO COMO TESTE PARA E.E. PEI PROFESSORA IRENE DIAS
             </p>
         </footer>
+
     </div>
+
 </body>
 </html>
-
