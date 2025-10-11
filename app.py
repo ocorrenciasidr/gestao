@@ -257,11 +257,6 @@ def gestao_cadastro_vincular_tutor_aluno():
 def gestao_cadastro_vincular_disciplina_sala():
     return render_template('gestao_cadastro_vinculacao_disciplina_sala.html')
 
-@app.route("/gestao_ocorrencia_editar")
-def gestao_ocorrencia_editar():
-    return render_template("gestao_ocorrencia_editar.html")
-
-
 # =================================================================
 # ROTAS DA API (GET - LISTAGEM DE DIMENSÃO E CASCATA)
 # =================================================================
@@ -1436,6 +1431,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
