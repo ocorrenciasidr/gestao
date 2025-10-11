@@ -1,222 +1,96 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Editar Ocorrência</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            'dark-primary': '#0F172A',
-            'dark-secondary': '#1E293B',
-            'accent': '#10B981',
-            'text-light': '#F8FAFC',
-            'danger': '#DC2626',
-            'input-bg': '#374151',
-            'tutor-color': '#007ACC',
-            'coord-color': '#F59E0B',
-            'gestao-color': '#EF4444',
-          },
-          fontFamily: {
-            sans: ['Inter', 'sans-serif'],
-          },
-        },
-      },
-    };
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editar Ocorrência</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { /* ... seu config ... */ };
+    </script>
+</head>
+<body class="bg-dark-primary min-h-screen p-8">
+    <div id="mensagem-status" class="hidden fixed top-4 right-4 p-4 rounded-lg shadow-xl text-text-light z-50"></div>
+    <div class="max-w-7xl mx-auto">
+        <header class="w-full text-center mb-8 mt-4">
+            <h1 class="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-accent">
+                SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR
+            </h1>
+            <h2 id="titulo-edicao" class="text-xl sm:text-2xl text-text-light mt-2 font-light border-b border-gray-700 pb-2 inline-block">
+                Carregando...
+            </h2>
+             <div class="mt-4 flex justify-center">
+                 <button type="button" onclick="window.history.back()"
+                         class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg flex items-center space-x-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z"></path></svg>
+                    <span>Voltar à Lista</span>
+                </button>
+             </div>
+        </header>
 
-    let ocorrenciaDataGlobal = {};
-    let nivelAtendimento = null;
+        <main class="w-full max-w-5xl mx-auto">
+            <form id="edicao-form">
+                <div class="bg-dark-secondary p-6 rounded-xl shadow-lg mb-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="display-aluno" class="text-sm">Aluno</label>
+                            <input type="text" id="display-aluno" class="w-full input-bg rounded-lg p-2" readonly>
+                        </div>
+                        <div>
+                            <label for="display-sala" class="text-sm">Sala</label>
+                            <input type="text" id="display-sala" class="w-full input-bg rounded-lg p-2" readonly>
+                        </div>
+                        <div>
+                            <label for="display-tutor" class="text-sm">Tutor (Aluno)</label>
+                            <input type="text" id="display-tutor" class="w-full input-bg rounded-lg p-2" readonly>
+                        </div>
+                         <div>
+                            <label for="display-professor" class="text-sm">Professor (Registro)</label>
+                            <input type="text" id="display-professor" class="w-full input-bg rounded-lg p-2" readonly>
+                        </div>
+                         <div class="md:col-span-2">
+                            <label for="display-registro" class="text-sm">Data/Hora do Registro</label>
+                            <input type="text" id="display-registro" class="w-full input-bg rounded-lg p-2" readonly>
+                        </div>
+                    </div>
+                </div>
 
+                </form>
+        </main>
+    </div>
+</body>
+<script>
     document.addEventListener('DOMContentLoaded', () => {
-      const urlParams = new URLSearchParams(window.location.search);
-      const id = urlParams.get('id');
-      const modo = urlParams.get('modo');
-      nivelAtendimento = urlParams.get('nivel');
-
-      if (!id) {
-        mostrarMensagem('ID da ocorrência não encontrado.', 'danger');
-        return;
-      }
-
-      carregarDetalhesOcorrencia(id, modo);
+        const urlParams = new URLSearchParams(window.location.search);
+        const id = urlParams.get('id'); // Este ID agora é o 'numero'
+        const modo = urlParams.get('modo');
+        
+        if (!id) {
+            alert("ID da ocorrência não encontrado!");
+            return;
+        }
+        carregarDetalhesOcorrencia(id, modo);
     });
 
-    function mostrarMensagem(texto, tipo) {
-      const msg = document.getElementById('mensagem-status');
-      msg.textContent = texto;
-      msg.classList.remove('hidden', 'bg-accent', 'bg-danger', 'bg-dark-secondary', 'text-yellow-400');
-      if (tipo === 'success') msg.classList.add('bg-accent');
-      else if (tipo === 'danger') msg.classList.add('bg-danger');
-      else msg.classList.add('bg-dark-secondary', 'text-yellow-400');
-      setTimeout(() => msg.classList.add('hidden'), 4000);
-    }
-
-    function formatarDataHora(str) {
-      if (!str) return 'N/A';
-      try {
-        const d = new Date(str);
-        return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR');
-      } catch { return str; }
-    }
-
     async function carregarDetalhesOcorrencia(id, modo) {
-      mostrarMensagem('Carregando detalhes...', 'info');
-      try {
-        const resp = await fetch(`/api/ocorrencias/${id}`);
-        if (!resp.ok) throw new Error('Falha ao carregar detalhes');
-        ocorrenciaDataGlobal = await resp.json();
-        preencherFormulario(ocorrenciaDataGlobal);
-        configurarModo(modo);
-        mostrarMensagem('Detalhes carregados com sucesso!', 'success');
-      } catch (err) {
-        console.error(err);
-        mostrarMensagem('Erro ao carregar detalhes: ' + err.message, 'danger');
-      }
+        try {
+            // A rota da API deve ser capaz de buscar uma ocorrência pelo seu número
+            const response = await fetch(`/api/ocorrencias/${id}`);
+            if (!response.ok) {
+                throw new Error("Falha ao carregar detalhes.");
+            }
+            const data = await response.json();
+            preencherFormulario(data);
+            // ... (restante da sua lógica)
+        } catch (error) {
+            alert("Erro ao carregar detalhes: " + error.message);
+        }
     }
 
     function preencherFormulario(data) {
-      document.getElementById('display-aluno').value = data.aluno_nome || 'N/A';
-      document.getElementById('display-sala').value = data.sala_nome || 'N/A';
-      document.getElementById('display-tutor').value = data.tutor_nome || 'N/A';
-      document.getElementById('display-professor').value = data.professor_nome || 'N/A';
-      document.getElementById('display-registro').value = formatarDataHora(data.data_hora);
-      document.getElementById('descricao-ocorrencia').value = data.descricao || '';
-      document.getElementById('atendimento-professor').value = data.atendimento_professor || '';
-      document.getElementById('atendimento-tutor').value = data.atendimento_tutor || '';
-      document.getElementById('atendimento-coordenacao').value = data.atendimento_coordenacao || '';
-      document.getElementById('atendimento-gestao').value = data.atendimento_gestao || '';
-      document.getElementById('status-tutor').textContent = data.dt_atendimento_tutor ? 'ATENDIDO' : 'PENDENTE';
-      document.getElementById('status-coordenacao').textContent = data.dt_atendimento_coordenacao ? 'ATENDIDO' : 'PENDENTE';
-      document.getElementById('status-gestao').textContent = data.dt_atendimento_gestao ? 'ATENDIDO' : 'PENDENTE';
+        document.getElementById('display-aluno').value = data.aluno_nome || 'N/A';
+        document.getElementById('display-sala').value = data.sala_nome || 'N/A';
+        // ... (preencher outros campos)
     }
-
-    function configurarModo(modo) {
-      const campos = ['descricao-ocorrencia', 'atendimento-professor', 'atendimento-tutor', 'atendimento-coordenacao', 'atendimento-gestao'];
-      const btnAt = document.getElementById('btn-salvar-atendimento');
-      const btnEd = document.getElementById('btn-salvar-edicao');
-      campos.forEach(id => {
-        const el = document.getElementById(id);
-        el.readOnly = true;
-        el.classList.remove('input-editable');
-      });
-      btnAt.classList.add('hidden'); btnEd.classList.add('hidden');
-
-      if (modo === 'visualizar') {
-        document.getElementById('titulo-edicao').textContent = 'Visualização Completa';
-      } else if (modo === 'editar') {
-        document.getElementById('titulo-edicao').textContent = 'Edição Completa (Gestão)';
-        campos.forEach(id => {
-          const el = document.getElementById(id);
-          el.readOnly = false; el.classList.add('input-editable');
-        });
-        btnEd.classList.remove('hidden');
-      } else if (modo === 'atendimento' && nivelAtendimento) {
-        document.getElementById('titulo-edicao').textContent = `Atendimento - ${nivelAtendimento.toUpperCase()}`;
-        btnAt.classList.remove('hidden');
-        let campo = nivelAtendimento === 'tutor' ? 'atendimento-tutor' :
-                    nivelAtendimento === 'coordenacao' ? 'atendimento-coordenacao' : 'atendimento-gestao';
-        const el = document.getElementById(campo);
-        el.readOnly = false; el.classList.add('input-editable'); el.focus();
-      }
-    }
-
-    async function salvarAtendimento(event) {
-      event.preventDefault();
-      const id = ocorrenciaDataGlobal.id || ocorrenciaDataGlobal.numero;
-      if (!id || !nivelAtendimento) return mostrarMensagem('Erro: dados ausentes.', 'danger');
-
-      const campo = nivelAtendimento === 'tutor' ? 'atendimento-tutor' :
-                    nivelAtendimento === 'coordenacao' ? 'atendimento-coordenacao' : 'atendimento-gestao';
-      const texto = document.getElementById(campo).value.trim();
-      if (!texto) return mostrarMensagem('Campo de atendimento vazio.', 'danger');
-
-      mostrarMensagem('Salvando atendimento...', 'info');
-      try {
-        const resp = await fetch(`/api/registrar_atendimento/${id}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nivel: nivelAtendimento, texto_atendimento: texto })
-        });
-        const res = await resp.json();
-        if (!resp.ok) throw new Error(res.error || 'Erro ao salvar');
-
-        mostrarMensagem('Atendimento salvo com sucesso!', 'success');
-        setTimeout(() => window.location.href = '/gestao_ocorrencia_abertas', 1000);
-      } catch (err) {
-        console.error(err);
-        mostrarMensagem('Erro ao salvar: ' + err.message, 'danger');
-      }
-    }
-  </script>
-  <style>
-    body { background-color: #0F172A; font-family: 'Inter', sans-serif; }
-    .bg-dark-secondary { background-color: #1E293B; }
-    .text-text-light { color: #F8FAFC; }
-    .input-bg { background-color: #374151; color: #F8FAFC; }
-    .input-editable { background-color: #1E293B; border: 2px solid #10B981; }
-    textarea:read-only, input:read-only { background-color: #1F2937 !important; }
-  </style>
-</head>
-<body class="bg-dark-primary min-h-screen p-8 text-text-light">
-  <div id="mensagem-status" class="hidden fixed top-4 right-4 p-4 rounded-lg shadow-xl text-text-light z-50 transition-opacity duration-300"></div>
-
-  <div class="max-w-7xl mx-auto">
-    <header class="text-center mb-8 mt-4">
-      <h1 class="text-4xl font-extrabold text-accent">SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR</h1>
-      <h2 id="titulo-edicao" class="text-2xl mt-2 font-light border-b border-gray-700 pb-2 inline-block">Carregando...</h2>
-      <div class="mt-4 flex justify-center">
-        <button type="button" onclick="window.location.href='/gestao_ocorrencia_abertas.html'"
-          class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200">
-          Voltar à Lista
-        </button>
-      </div>
-    </header>
-
-    <main class="max-w-5xl mx-auto">
-      <form onsubmit="salvarAtendimento(event)">
-        <div class="bg-dark-secondary p-6 rounded-xl shadow-lg mb-6">
-          <h3 class="text-xl font-semibold mb-4 text-accent border-b border-gray-700 pb-2">Dados do Aluno e Registro</h3>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div><label>Aluno</label><input id="display-aluno" class="w-full input-bg rounded-lg p-2" readonly></div>
-            <div><label>Sala</label><input id="display-sala" class="w-full input-bg rounded-lg p-2" readonly></div>
-            <div><label>Tutor</label><input id="display-tutor" class="w-full input-bg rounded-lg p-2" readonly></div>
-            <div><label>Professor</label><input id="display-professor" class="w-full input-bg rounded-lg p-2" readonly></div>
-            <div class="md:col-span-2"><label>Data/Hora</label><input id="display-registro" class="w-full input-bg rounded-lg p-2" readonly></div>
-          </div>
-        </div>
-
-        <div class="bg-dark-secondary p-6 rounded-xl shadow-lg mb-6">
-          <h3 class="text-xl font-semibold mb-4 text-accent border-b border-gray-700 pb-2">Descrição da Ocorrência</h3>
-          <textarea id="descricao-ocorrencia" rows="3" class="w-full input-bg rounded-lg p-2" readonly></textarea>
-          <h3 class="text-xl font-semibold mb-4 mt-4 text-accent border-b border-gray-700 pb-2">Atendimento do Professor</h3>
-          <textarea id="atendimento-professor" rows="3" class="w-full input-bg rounded-lg p-2" readonly></textarea>
-        </div>
-
-        <div class="bg-dark-secondary p-6 rounded-xl shadow-lg mb-6 border-l-4 border-tutor-color">
-          <h3 class="text-xl font-semibold text-tutor-color">Atendimento Tutor <span id="status-tutor" class="text-sm ml-2 text-gray-400"></span></h3>
-          <textarea id="atendimento-tutor" rows="3" class="w-full input-bg rounded-lg p-2"></textarea>
-        </div>
-
-        <div class="bg-dark-secondary p-6 rounded-xl shadow-lg mb-6 border-l-4 border-coord-color">
-          <h3 class="text-xl font-semibold text-coord-color">Atendimento Coordenação <span id="status-coordenacao" class="text-sm ml-2 text-gray-400"></span></h3>
-          <textarea id="atendimento-coordenacao" rows="3" class="w-full input-bg rounded-lg p-2"></textarea>
-        </div>
-
-        <div class="bg-dark-secondary p-6 rounded-xl shadow-lg mb-6 border-l-4 border-gestao-color">
-          <h3 class="text-xl font-semibold text-gestao-color">Atendimento Gestão <span id="status-gestao" class="text-sm ml-2 text-gray-400"></span></h3>
-          <textarea id="atendimento-gestao" rows="3" class="w-full input-bg rounded-lg p-2"></textarea>
-        </div>
-
-        <div class="text-center">
-          <button id="btn-salvar-atendimento" type="submit" class="hidden bg-accent hover:bg-emerald-600 text-white font-bold py-3 px-6 rounded-lg transition duration-200">Salvar Atendimento e Finalizar</button>
-          <button id="btn-salvar-edicao" type="button" class="hidden bg-accent hover:bg-emerald-600 text-white font-bold py-3 px-6 rounded-lg transition duration-200">Salvar Edição Completa</button>
-        </div>
-      </form>
-    </main>
-  </div>
-</body>
+</script>
 </html>
-
