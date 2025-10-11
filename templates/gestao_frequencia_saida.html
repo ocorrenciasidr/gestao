@@ -6,76 +6,57 @@
     <title>Registro de Saída Antecipada</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-        // Configuração do tema escuro e cores customizadas (igual aos outros arquivos)
         tailwind.config = {
             theme: {
                 extend: {
                     colors: {
-                        'dark-primary': '#0F172A', // Slate 900
-                        'dark-secondary': '#1E293B', // Slate 800
-                        'secondary-accent': '#4F46E5', // Indigo 600 (Cor principal)
-                        'accent-success': '#10B981', // Emerald 500
-                        'alert-danger': '#DC2626', // Red 600
-                        'text-light': '#F8FAFC', // Slate 50
+                        'dark-primary': '#0F172A', 'dark-secondary': '#1E293B', 'secondary-accent': '#4F46E5',
+                        'accent-success': '#10B981', 'alert-danger': '#DC2626', 'text-light': '#F8FAFC',
                     },
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                    },
+                    fontFamily: { sans: ['Inter', 'sans-serif'], },
                 }
             }
         }
     </script>
     <style>
-        /* CORREÇÃO DOS FILTROS (V.3): Garante visibilidade da seta e do placeholder */
         .form-select, .form-input {
-            /* Fundo branco e texto preto para máxima visibilidade */
             @apply w-full p-3 bg-white border border-gray-700 rounded-lg text-black focus:ring-secondary-accent focus:border-secondary-accent;
-            
-            /* Correção do Select: Força o navegador a desenhar a seta nativa */
-            appearance: menulist !important; 
-            -webkit-appearance: menulist !important;
-            -moz-appearance: menulist !important;
-            
+            appearance: menulist !important; -webkit-appearance: menulist !important; -moz-appearance: menulist !important;
             color: black !important;
         }
-
-        /* Correção do Input de Data/Hora: Garante que o texto seja escuro */
-        .form-select[type="date"]:invalid {
-            color: #808080 !important; 
-        }
+        .form-select[type="date"]:invalid { color: #808080 !important; }
         .form-select[type="date"]:invalid::-webkit-datetime-edit-text, 
         .form-select[type="date"]:invalid::-webkit-datetime-edit-month-field, 
         .form-select[type="date"]:invalid::-webkit-datetime-edit-day-field, 
         .form-select[type="date"]:invalid::-webkit-datetime-edit-year-field {
-            color: #808080 !important; 
+            color: #808080 !important;
         }
     </style>
     <script>
-        // Variáveis de Simulação (Serão substituídas pelo Flask)
-        let salasData = []; 
+        let salasData = [];
         let alunosData = [];
         
         document.addEventListener('DOMContentLoaded', () => {
             loadSalas();
-            
-            // Listeners para carregar alunos e exibir o formulário
             document.getElementById('select-sala').addEventListener('change', loadAlunos);
             document.getElementById('select-aluno').addEventListener('change', showSaidaForm);
         });
 
-        // 1. Carrega as opções de Sala
+        async function handleFetchResponse(url, context) {
+            const response = await fetch(url);
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                alert(`Erro ao buscar ${context}: ${errorData.error || response.statusText}`);
+                throw new Error(`Falha no fetch de ${context}`);
+            }
+            return response.json();
+        }
+
         async function loadSalas() {
             const selectSala = document.getElementById('select-sala');
             selectSala.innerHTML = '<option value="">Carregando Salas...</option>';
-            
-            // SIMULAÇÃO: Carregando dados da Sala
             try {
-                salasData = [
-                    { id: 'S01', nome: '6º ANO A (Exemplo)' },
-                    { id: 'S02', nome: '7º ANO B (Exemplo)' },
-                    { id: 'S03', nome: '8º ANO C (Exemplo)' },
-                ];
-                
+                salasData = await handleFetchResponse('/api/salas', 'Salas');
                 selectSala.innerHTML = '<option value="">Selecione a Sala *</option>';
                 salasData.forEach(sala => {
                     selectSala.innerHTML += `<option value="${sala.id}">${sala.nome}</option>`;
@@ -86,7 +67,6 @@
             }
         }
 
-        // 2. Carrega a lista de Alunos da Sala Selecionada
         async function loadAlunos() {
             const salaId = document.getElementById('select-sala').value;
             const selectAluno = document.getElementById('select-aluno');
@@ -101,19 +81,8 @@
                 return;
             }
             
-            // SIMULAÇÃO: Carregando dados de Alunos
             try {
-                // Em um sistema real, você faria um fetch(api/alunos_por_sala/${salaId})
-                if (salaId === 'S01') {
-                     alunosData = [
-                        { id: 'A001', nome: 'ANA JULIA BALIEIRO' },
-                        { id: 'A002', nome: 'BRUNO GOMES PEREIRA' },
-                        { id: 'A003', nome: 'CARLA SILVA SANTOS' },
-                    ];
-                } else {
-                    alunosData = [];
-                }
-
+                alunosData = await handleFetchResponse(`/api/alunos_por_sala/${salaId}`, 'Alunos');
                 selectAluno.innerHTML = '<option value="">Selecione o Aluno *</option>';
                 alunosData.forEach(aluno => {
                     selectAluno.innerHTML += `<option value="${aluno.id}">${aluno.nome}</option>`;
@@ -126,16 +95,14 @@
             }
         }
 
-        // 3. Exibe o formulário de registro de saída e preenche Data/Hora
         function showSaidaForm() {
             const alunoId = document.getElementById('select-aluno').value;
             const formContainer = document.getElementById('saida-form-container');
             
             if (alunoId) {
-                // Preenche Data e Hora atuais
                 const now = new Date();
                 const today = now.toISOString().split('T')[0];
-                const time = now.toTimeString().split(' ')[0].substring(0, 5); // HH:MM
+                const time = now.toTimeString().split(' ')[0].substring(0, 5);
                 
                 document.getElementById('input-data').value = today;
                 document.getElementById('input-hora').value = time;
@@ -146,7 +113,6 @@
             }
         }
 
-        // 4. Lógica para Salvar o Registro de Saída
         async function saveSaida() {
             const salaId = document.getElementById('select-sala').value;
             const alunoId = document.getElementById('select-aluno').value;
@@ -155,52 +121,37 @@
             const motivo = document.getElementById('input-motivo').value.trim();
             
             if (!alunoId || !data || !hora || !motivo) {
-                alert('Por favor, preencha todos os campos (Sala, Aluno, Data, Hora e Motivo).');
+                alert('Por favor, preencha todos os campos.');
                 return;
             }
             
-            const registro = {
-                aluno_id: alunoId,
-                sala_id: salaId,
-                data: data,
-                hora: hora,
-                motivo: motivo
-            };
+            const registro = { aluno_id: alunoId, sala_id: salaId, data, hora, motivo };
 
-            console.log('Dados a serem enviados para o servidor:', registro);
-            
-            // SIMULAÇÃO DE ENVIO PARA O SERVIDOR (Remova ao conectar ao Flask)
             try {
-                // EX: const response = await fetch('/api/salvar_saida_antecipada', {
-                //     method: 'POST',
-                //     headers: { 'Content-Type': 'application/json' },
-                //     body: JSON.stringify(registro),
-                // });
+                // ROTA REAL: /api/salvar_saida_antecipada
+                const response = await fetch('/api/salvar_saida_antecipada', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(registro),
+                });
+
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.error || 'Falha no servidor');
+
+                alert(`Saída Antecipada registrada com sucesso!`);
                 
-                const alunoNome = alunosData.find(a => a.id === alunoId)?.nome || 'Aluno Desconhecido';
-                alert(`Saída Antecipada de ${alunoNome} em ${formatDate(data)} às ${hora} registrada com sucesso!`);
-                
-                // Limpar o formulário após salvar
                 document.getElementById('select-aluno').value = '';
                 document.getElementById('input-motivo').value = '';
                 document.getElementById('saida-form-container').classList.add('hidden');
-                
+
             } catch (error) {
                 console.error("Erro ao salvar a saída:", error);
-                alert(`ERRO: Não foi possível salvar o registro de saída antecipada. ${error.message}`);
+                alert(`ERRO: ${error.message}`);
             }
-        }
-        
-        // Função utilitária
-        function formatDate(dateString) {
-            if (!dateString) return '';
-            const [year, month, day] = dateString.split('-');
-            return `${day}/${month}/${year}`;
         }
     </script>
 </head>
 <body class="bg-dark-primary font-sans text-text-light min-h-screen">
-    
     <div id="app-container" class="flex flex-col items-center justify-start p-4 md:p-8">
 
         <header class="w-full max-w-4xl text-center mb-8 mt-4">
@@ -212,27 +163,23 @@
             </h2>
             <div class="mt-4">
                  <button type="button" onclick="window.location.href='/gestao_frequencia'"
-                        class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200 ease-in-out flex items-center justify-center space-x-2 mx-auto w-full max-w-xs">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z"></path></svg>
+                         class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200 ease-in-out flex items-center justify-center space-x-2 mx-auto w-full max-w-xs">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z"></path></svg>
                     <span>VOLTAR AO MENU DE FREQUÊNCIA</span>
                 </button>
             </div>
         </header>
 
         <main class="w-full max-w-4xl flex-grow">
-            
             <div class="bg-dark-secondary p-8 rounded-xl shadow-2xl space-y-6">
                 <h3 class="text-2xl font-bold border-b border-gray-600 pb-3 text-secondary-accent">1. FILTROS</h3>
-                
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    
                     <div>
                         <label for="select-sala" class="block text-sm font-medium text-gray-300 mb-1">Sala:</label>
                         <select id="select-sala" class="form-select" required>
                             <option value="">Selecione a Sala *</option>
                         </select>
                     </div>
-                    
                     <div id="aluno-filter-container" class="hidden">
                         <label for="select-aluno" class="block text-sm font-medium text-gray-300 mb-1">Aluno:</label>
                         <select id="select-aluno" class="form-select" required>
@@ -243,50 +190,29 @@
             </div>
             
             <div id="saida-form-container" class="bg-dark-secondary p-8 rounded-xl shadow-2xl space-y-6 mt-6 hidden">
-                 <h3 class="text-2xl font-bold border-b border-gray-600 pb-3 text-alert-danger">
-                    2. REGISTRO
-                 </h3>
-                 
+                 <h3 class="text-2xl font-bold border-b border-gray-600 pb-3 text-alert-danger">2. REGISTRO</h3>
                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                      <div>
-                        <label for="input-data" class="block text-sm font-medium text-gray-300 mb-1">Data da Saída:</label>
-                        <input type="date" id="input-data" class="form-select" required readonly>
+                         <label for="input-data" class="block text-sm font-medium text-gray-300 mb-1">Data da Saída:</label>
+                         <input type="date" id="input-data" class="form-select" required readonly>
                      </div>
                      <div>
-                        <label for="input-hora" class="block text-sm font-medium text-gray-300 mb-1">Hora da Saída:</label>
-                        <input type="time" id="input-hora" class="form-select" required>
+                         <label for="input-hora" class="block text-sm font-medium text-gray-300 mb-1">Hora da Saída:</label>
+                         <input type="time" id="input-hora" class="form-select" required>
                      </div>
                  </div>
-                 
                  <div>
                     <label for="input-motivo" class="block text-sm font-medium text-gray-300 mb-1">Motivo da Saída Antecipada:</label>
-                    <textarea id="input-motivo" rows="4" placeholder="Descreva o motivo pelo qual o aluno está saindo antecipadamente..." 
-                              class="form-input w-full" required></textarea>
-                 </div>
-
+                    <textarea id="input-motivo" rows="4" placeholder="Descreva o motivo pelo qual o aluno está saindo antecipadamente..." class="form-input w-full" required></textarea>
+                </div>
                  <div class="pt-6 border-t border-gray-700">
-                     <button onclick="saveSaida()" 
-                             class="w-full bg-alert-danger hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 ease-in-out shadow-lg shadow-red-500/50 flex items-center justify-center space-x-2 transform hover:scale-[1.01]">
-                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                              <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H3a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/>
-                         </svg>
-                         <span>REGISTRAR SAÍDA ANTECIPADA</span>
+                     <button onclick="saveSaida()" class="w-full bg-alert-danger hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 ease-in-out shadow-lg shadow-red-500/50 flex items-center justify-center space-x-2 transform hover:scale-[1.01]">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H3a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/></svg>
+                        <span>REGISTRAR SAÍDA ANTECIPADA</span>
                      </button>
                  </div>
             </div>
-
         </main>
-
-        <footer class="w-full text-center mt-10 p-4 text-gray-400 text-sm border-t border-gray-800">
-            <p class="mb-1 text-base font-medium">
-                DESENVOLVEDOR: MARCELO CARDES E LUIS FELIPE CARDES
-            </p>
-            <p class="text-xs font-light tracking-wide">
-                LICENCIADO COMO TESTE PARA E.E. PEI PROFESSORA IRENE DIAS
-            </p>
-        </footer>
-
     </div>
-
 </body>
 </html>
