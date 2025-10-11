@@ -659,45 +659,52 @@ def api_get_guia_aprendizagem():
 # =================================================================
 # ROTAS DA API (POST - CADASTROS E TRANSAÇÕES)
 # =================================================================
-@app.route('/api/registrar_atendimento/<ocorrencia_id>', methods=['POST'])
-def api_registrar_atendimento(ocorrencia_id):
-    data = request.json
-    nivel = data.get('nivel') # 'tutor', 'coordenacao', 'gestao'
-    texto_atendimento = data.get('texto_atendimento')
+from datetime import datetime
+from flask import request, jsonify
 
-    if not nivel or not texto_atendimento:
-        return jsonify({"error": "Nível ou texto de atendimento são obrigatórios.", "status": 400}), 400
-
+@app.route("/api/registrar_atendimento/<int:ocorrencia_id>", methods=["POST"])
+def registrar_atendimento(ocorrencia_id):
     try:
-        ocorrencia_id_bigint = int(ocorrencia_id)
-        
-        # O nome da coluna de texto é 'atendimento_[nivel]' (ex: atendimento_tutor)
-        # O nome da coluna de data é 'dt_atendimento_[nivel]' (ex: dt_atendimento_tutor)
-        texto_coluna = f"atendimento_{nivel}"
-        data_coluna = f"dt_atendimento_{nivel}"
+        data = request.get_json()
+        nivel = data.get("nivel")
+        texto = data.get("texto_atendimento")
 
-        update_data = {
-            # Salva o texto digitado na coluna de texto
-            texto_coluna: texto_atendimento,
-            # Salva o timestamp atual na coluna de data (marcando como atendido)
-            data_coluna: "now()" 
+        if not nivel or not texto:
+            return jsonify({"error": "Dados incompletos"}), 400
+
+        campos = {
+            "tutor": ("atendimento_tutor", "dt_atendimento_tutor"),
+            "coordenacao": ("atendimento_coordenacao", "dt_atendimento_coordenacao"),
+            "gestao": ("atendimento_gestao", "dt_atendimento_gestao"),
         }
 
-        # NOTA: O Supabase precisa de um comando SQL nativo para o 'now()' ou a data formatada
-        # Aqui, estamos enviando a string "now()" que o Supabase deve interpretar como timestamp SQL
-        response = supabase.table('ocorrencias').update(update_data).eq('numero', ocorrencia_id_bigint).execute()
-        
-        # Verifica se a atualização foi bem-sucedida (o response.data deve ter pelo menos um item)
-        if not handle_supabase_response(response):
-            raise Exception("Nenhuma ocorrência encontrada ou atualizada.")
+        if nivel not in campos:
+            return jsonify({"error": "Nível inválido"}), 400
 
-        return jsonify({"message": f"Atendimento {nivel.upper()} registrado com sucesso!", "status": 200}), 200
+        campo_texto, campo_data = campos[nivel]
+        agora = datetime.now().isoformat()
 
-    except ValueError:
-        return jsonify({"error": "ID da ocorrência inválido.", "status": 400}), 400
+        supabase.table("ocorrencias").update({
+            campo_texto: texto,
+            campo_data: agora
+        }).eq("id", ocorrencia_id).execute()
+
+        # Verifica se já foi atendido por todos
+        result = supabase.table("ocorrencias").select(
+            "dt_atendimento_tutor, dt_atendimento_coordenacao, dt_atendimento_gestao"
+        ).eq("id", ocorrencia_id).single().execute()
+        occ = result.data
+
+        if all([occ.get("dt_atendimento_tutor"),
+                occ.get("dt_atendimento_coordenacao"),
+                occ.get("dt_atendimento_gestao")]):
+            supabase.table("ocorrencias").update({"status": "FINALIZADA"}).eq("id", ocorrencia_id).execute()
+
+        return jsonify({"success": True})
+
     except Exception as e:
-        logging.error(f"Erro ao registrar atendimento: {e}")
-        return jsonify({"error": f"Falha ao registrar atendimento: {e}", "status": 500}), 500
+        print("Erro registrar_atendimento:", e)
+        return jsonify({"error": str(e)}), 500
 
 # ROTA 13: API POST: Cadastro de Sala
 @app.route('/api/cadastrar_sala', methods=['POST'])
@@ -1413,6 +1420,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
