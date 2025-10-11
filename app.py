@@ -691,12 +691,12 @@ def registrar_atendimento(ocorrencia_id):
         supabase.table("ocorrencias").update({
             campo_texto: texto,
             campo_data: agora
-        }).eq("id", ocorrencia_id).execute()
+        }).eq("numero", ocorrencia_id).execute()
 
         # Busca os atendimentos atuais
         result = supabase.table("ocorrencias").select(
             "dt_atendimento_tutor, dt_atendimento_coordenacao, dt_atendimento_gestao"
-        ).eq("id", ocorrencia_id).single().execute()
+        ).eq("numero", ocorrencia_id).single().execute()
 
         if not result or not result.data:
             return jsonify({"error": "Ocorrência não encontrada"}), 404
@@ -709,7 +709,7 @@ def registrar_atendimento(ocorrencia_id):
             occ.get("dt_atendimento_coordenacao"),
             occ.get("dt_atendimento_gestao")
         ]):
-            supabase.table("ocorrencias").update({"status": "FINALIZADA"}).eq("id", ocorrencia_id).execute()
+            supabase.table("ocorrencias").update({"status": "FINALIZADA"}).eq("numero", ocorrencia_id).execute()
 
         return jsonify({"success": True})
 
@@ -1431,6 +1431,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
