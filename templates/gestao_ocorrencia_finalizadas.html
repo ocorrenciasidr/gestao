@@ -141,42 +141,46 @@
             renderizarTabela(filteredOcorrencias);
         }
 
-        function renderizarTabela(ocorrencias) {
-            const tbody = document.getElementById('tabela-ocorrencias');
-            if (!tbody) return;
+       function renderizarTabela(ocorrencias) {
+    const tbody = document.getElementById('tabela-ocorrencias');
+    if (!tbody) return;
 
-            if (ocorrencias.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="10" class="text-center py-6 text-gray-400">Nenhuma ocorrência finalizada encontrada.</td></tr>`;
-                return;
-            }
+    // CORREÇÃO: Colspan ajustado de 10 para 9
+    if (ocorrencias.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" class="text-center py-6 text-gray-400">Nenhuma ocorrência finalizada encontrada.</td></tr>`;
+        return;
+    }
 
-            let html = '';
-            ocorrencias.forEach(o => {
-                html += `<tr class="hover:bg-dark-primary transition duration-150" data-id="${o.id}">
-                    <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-sm font-medium">${o.id}</td>
-                    <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-sm">${formatarData(o.data_hora || o.data_registro)}</td>
-                    <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-sm">${o.aluno_nome}</td>
-                    <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm">${o.sala_nome}</td>
-                    <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm">${formatarData(o.dt_atendimento_professor)}</td>
-                    <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm">${exibirDataOuTraco(o.dt_atendimento_tutor, o.solicitado_tutor)}</td>
-                    <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm">${exibirDataOuTraco(o.dt_atendimento_coordenacao, o.solicitado_coordenacao)}</td>
-                    <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm">${exibirDataOuTraco(o.dt_atendimento_gestao, o.solicitado_gestao)}</td>
-                    <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm">
-                        <span class="px-3 py-1 text-xs font-semibold rounded-full bg-success/50 text-accent">FINALIZADA</span>
-                    </td>
-                    <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm font-medium">
-                        <a href="/gestao_ocorrencia_editar?id=${o.id}&modo=visualizar" title="Visualização Completa" class="text-blue-400 hover:text-blue-300 transition duration-150 inline-block p-1">
-                           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                        </a>
-                        <a href="#" onclick="abrirModalSenhaEdicao('${o.id}')" title="Edição Completa (Acesso Gestão)" class="text-warning hover:text-yellow-400 transition duration-150 inline-block p-1 ml-2">
-                           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                        </a>
-                        <button onclick="confirmarExclusao('${o.id}')" title="Excluir Ocorrência" class="text-danger hover:text-red-400 transition duration-150 inline-block p-1 ml-2">
-                           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                        </button>
-                    </td>
-                </tr>`;
-            });
+    let html = '';
+    ocorrencias.forEach(o => {
+        // CORREÇÃO: Usando 'numero' como o identificador principal
+        const numeroOcorrencia = o.numero;
+
+        html += `<tr class="hover:bg-dark-primary transition duration-150" data-id="${numeroOcorrencia}">
+            <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-sm font-medium">${numeroOcorrencia}</td>
+            <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-sm">${formatarData(o.data_hora || o.data_registro)}</td>
+            <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-sm">${o.aluno_nome}</td>
+            <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm">${o.sala_nome}</td>
+            
+            <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm">${exibirDataOuTraco(o.dt_atendimento_tutor, o.solicitado_tutor)}</td>
+            <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm">${exibirDataOuTraco(o.dt_atendimento_coordenacao, o.solicitado_coordenacao)}</td>
+            <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm">${exibirDataOuTraco(o.dt_atendimento_gestao, o.solicitado_gestao)}</td>
+            <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm">
+                <span class="px-3 py-1 text-xs font-semibold rounded-full bg-success/50 text-accent">FINALIZADA</span>
+            </td>
+            <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm font-medium">
+                <a href="/gestao_ocorrencia_editar?id=${numeroOcorrencia}&modo=visualizar" title="Visualização Completa" class="text-blue-400 hover:text-blue-300 transition duration-150 inline-block p-1">
+                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                </a>
+                <a href="#" onclick="abrirModalSenhaEdicao('${numeroOcorrencia}')" title="Edição Completa (Acesso Gestão)" class="text-warning hover:text-yellow-400 transition duration-150 inline-block p-1 ml-2">
+                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                </a>
+                
+                </td>
+        </tr>`;
+    });
+    tbody.innerHTML = html;
+}
             tbody.innerHTML = html;
         }
 
@@ -339,3 +343,4 @@
 
 </body>
 </html>
+
