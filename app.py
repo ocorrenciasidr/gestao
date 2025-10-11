@@ -105,10 +105,11 @@ def gestao_ocorrencia():
 def gestao_ocorrencia_nova():
     return render_template('gestao_ocorrencia_nova.html') 
 
-@app.route('/gestao_ocorrencia_abertas')
+@app.route("/gestao_ocorrencia_abertas")
 def gestao_ocorrencia_abertas():
-    return render_template('gestao_ocorrencia_abertas.html') 
-
+    """Renderiza a página de ocorrências abertas."""
+    return render_template("gestao_ocorrencia_abertas.html")
+    
 @app.route('/gestao_ocorrencia_finalizadas')
 def gestao_ocorrencia_finalizadas():
     return render_template('gestao_ocorrencia_finalizadas.html') 
@@ -1420,6 +1421,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
