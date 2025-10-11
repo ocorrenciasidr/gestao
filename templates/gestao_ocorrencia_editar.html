@@ -144,7 +144,7 @@
         if (!resp.ok) throw new Error(res.error || 'Erro ao salvar');
 
         mostrarMensagem('Atendimento salvo com sucesso!', 'success');
-        setTimeout(() => window.location.href = '/gestao_ocorrencia_abertas.html', 1000);
+        setTimeout(() => window.location.href = '/gestao_ocorrencia_abertas', 1000);
       } catch (err) {
         console.error(err);
         mostrarMensagem('Erro ao salvar: ' + err.message, 'danger');
@@ -219,3 +219,4 @@
   </div>
 </body>
 </html>
+
