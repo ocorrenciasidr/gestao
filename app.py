@@ -820,60 +820,56 @@ def api_get_guia_aprendizagem():
 # ROTAS DA API (POST - CADASTROS E TRANSAÇÕES)
 # =================================================================
 
-@app.route("/api/registrar_atendimento/<int:ocorrencia_id>", methods=["POST"])
-def registrar_atendimento(ocorrencia_id):
+@app.route('/api/registrar_atendimento', methods=['POST'])
+def registrar_atendimento():
     """
-    Atualiza o texto e data do atendimento (tutor, coordenação ou gestão).
-    Se todos os três atendimentos estiverem registrados, marca como FINALIZADA.
+    Recebe JSON: { "numero": <numero>, "nivel": "tutor|coordenacao|gestao", "texto": "..." }
+    Atualiza campo atendimento_* e dt_atendimento_*; se todos atendidos, marca Finalizada.
     """
     try:
-        data = request.get_json()
-        nivel = data.get("nivel")
-        texto = data.get("texto_atendimento")
+        payload = request.get_json(force=True)
+        numero = payload.get('numero')
+        nivel = payload.get('nivel')
+        texto = (payload.get('texto') or "").strip()
 
-        if not nivel or not texto:
-            return jsonify({"error": "Dados incompletos"}), 400
+        if not numero or not nivel:
+            return jsonify({"error":"numero e nivel são obrigatórios"}), 400
 
         campos = {
             "tutor": ("atendimento_tutor", "dt_atendimento_tutor"),
             "coordenacao": ("atendimento_coordenacao", "dt_atendimento_coordenacao"),
-            "gestao": ("atendimento_gestao", "dt_atendimento_gestao"),
+            "gestao": ("atendimento_gestao", "dt_atendimento_gestao")
         }
-
         if nivel not in campos:
-            return jsonify({"error": "Nível inválido"}), 400
+            return jsonify({"error":"nivel inválido"}), 400
 
         campo_texto, campo_data = campos[nivel]
         agora = datetime.now().isoformat()
-
-        # Atualiza o atendimento do nível correspondente
-        supabase.table("ocorrencias").update({
+        sup_resp = supabase.table('ocorrencias').update({
             campo_texto: texto,
             campo_data: agora
-        }).eq("numero", ocorrencia_id).execute()
+        }).eq('numero', numero).execute()
 
-        # Busca os atendimentos atuais
-        result = supabase.table("ocorrencias").select(
-            "dt_atendimento_tutor, dt_atendimento_coordenacao, dt_atendimento_gestao"
-        ).eq("numero", ocorrencia_id).single().execute()
+        # reconsulta para verificar todos os atendimentos
+        check = supabase.table('ocorrencias').select(
+            "solicitado_tutor, solicitado_coordenacao, solicitado_gestao, atendimento_tutor, atendimento_coordenacao, atendimento_gestao"
+        ).eq('numero', numero).single().execute()
 
-        if not result or not result.data:
-            return jsonify({"error": "Ocorrência não encontrada"}), 404
+        if not check or not check.data:
+            return jsonify({"error":"Ocorrência não encontrada"}), 404
 
-        occ = result.data
+        occ = check.data
+        tutor_ok = (not occ.get('solicitado_tutor')) or bool((occ.get('atendimento_tutor') or '').strip())
+        coord_ok = (not occ.get('solicitado_coordenacao')) or bool((occ.get('atendimento_coordenacao') or '').strip())
+        gestao_ok = (not occ.get('solicitado_gestao')) or bool((occ.get('atendimento_gestao') or '').strip())
 
-        # Se todos os atendimentos foram realizados, finaliza a ocorrência
-        if all([
-            occ.get("dt_atendimento_tutor"),
-            occ.get("dt_atendimento_coordenacao"),
-            occ.get("dt_atendimento_gestao")
-        ]):
-            supabase.table("ocorrencias").update({"status": "FINALIZADA"}).eq("numero", ocorrencia_id).execute()
+        if tutor_ok and coord_ok and gestao_ok:
+            supabase.table('ocorrencias').update({"status": "Finalizada"}).eq('numero', numero).execute()
 
-        return jsonify({"success": True})
+        return jsonify({"success": True, "message": "Atendimento registrado"}), 200
 
     except Exception as e:
-        print("Erro registrar_atendimento:", e)
+        logging.exception("Erro /api/registrar_atendimento")
         return jsonify({"error": str(e)}), 500
         
 # ROTA 13: API POST: Cadastro de Sala
@@ -1590,6 +1586,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
