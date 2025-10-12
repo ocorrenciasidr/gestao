@@ -677,45 +677,7 @@ from flask import jsonify
 # ... (resto do seu código do app.py) ...
 
 # Em app.py
-
-@app.route('/api/ocorrencias_finalizadas')
-def get_ocorrencias_finalizadas():
-    try:
-        # A query no Supabase continua a mesma, buscando os dados necessários
-        response = supabase.table('ocorrencias').select(
-            '*, professor_id(nome), sala_id(sala), tutor_id(nome)' # Garanta que os nomes de tabelas relacionadas estão corretos
-        ).order('data_hora', desc=True).execute()
-
-        if not response.data:
-            return jsonify([])
-
-        ocorrencias_finalizadas = []
-        for o in response.data:
-            # Ponto crucial: Se não houver data de atendimento do professor, a ocorrência não está finalizada.
-            if not o.get('dt_atendimento_professor'):
-                continue
-
-            # Verifica cada nível solicitado. Se não foi solicitado, considera-se atendido (True).
-            tutor_atendido = not o.get('solicitado_tutor') or o.get('dt_atendimento_tutor')
-            coord_atendido = not o.get('solicitado_coordenacao') or o.get('dt_atendimento_coordenacao')
-            gestao_atendido = not o.get('solicitado_gestao') or o.get('dt_atendimento_gestao')
-
-            # Se todos os níveis (incluindo os não solicitados) estiverem "OK", a ocorrência é finalizada.
-            if tutor_atendido and coord_atendido and gestao_atendido:
-                # CORREÇÃO PARA FRONTEND: Adiciona os nomes em campos fáceis de acessar
-                if o.get('sala_id') and isinstance(o.get('sala_id'), dict):
-                    o['sala_nome'] = o['sala_id'].get('sala')
-                if o.get('tutor_id') and isinstance(o.get('tutor_id'), dict):
-                    o['tutor_nome'] = o['tutor_id'].get('nome')
-                
-                ocorrencias_finalizadas.append(o)
-        
-        return jsonify(ocorrencias_finalizadas)
-
-    except Exception as e:
-        print(f"Erro em /api/ocorrencias_finalizadas: {e}") # Ajuda a depurar
-        return jsonify({"error": str(e)}), 500
-        
+       
 # ROTA 12.1: API GET: Horários Fixos por Nível (NOVO - Módulo Aulas)
 @app.route('/api/horarios_fixos/<nivel_ensino>', methods=['GET'])
 def api_get_horarios_fixos(nivel_ensino):
@@ -1559,6 +1521,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
