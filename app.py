@@ -9,6 +9,7 @@ import os # Importar para usar os.urandom.hex
 import json
 from datetime import datetime
 from flask import jsonify
+import logging
 
 # Configuração de Logs
 logging.basicConfig(level=logging.INFO)
@@ -53,6 +54,15 @@ def handle_supabase_response(response):
     # Caso algo diferente
     return []
 
+def formatar_data_hora(valor):
+    """Formata data/hora do Supabase (ISO) para pt-BR simples — se já tiver, ignore este bloco."""
+    if not valor:
+        return ""
+    try:
+        d = datetime.fromisoformat(valor)
+        return d.strftime("%d/%m/%Y %H:%M:%S")
+    except Exception:
+        return str(valor)
 # =================================================================
 # FUNÇÕES AUXILIARES
 # =================================================================
@@ -264,16 +274,45 @@ def gestao_cadastro_vincular_disciplina_sala():
 # ROTA 1: API GET: Listagem de Salas (CORRIGIDA)
 # Assume que d_salas tem as colunas id, sala, nivel_ensino
 @app.route('/api/salas', methods=['GET'])
-def api_get_salas():
+def api_salas():
+    """
+    Retorna lista de salas. Se ?finalizadas=true for enviado, retorna apenas salas
+    que possuem ocorrências finalizadas (usado para popular filtro da página Finalizadas).
+    """
     try:
-        # SELECT nas colunas reais e ORDER pela coluna 'sala'
-        response = supabase.table('d_salas').select('id, sala, nivel_ensino').order('sala').execute()
-        # Mapeia 'sala' para 'nome' na resposta JSON para consistência
-        salas = [{"id": str(s['id']), "nome": f"{s['sala']} ({s['nivel_ensino']})", "nivel_ensino": s['nivel_ensino']} for s in handle_supabase_response(response)]
-        return jsonify(salas)
+        apenas_com_finalizadas = request.args.get('finalizadas', 'false').lower() in ('1','true','sim','y','yes')
+        if not apenas_com_finalizadas:
+            resp = supabase.table('salas').select('id,sala').order('sala', asc=True).execute()
+            data = resp.data or []
+            return jsonify(data), 200
+
+        # Query: buscar salas que tenham ocorrências finalizadas
+        # Fazemos um select na tabela ocorrencias pedindo sala_id, distinct
+        resp = supabase.table('ocorrencias').select('sala_id').eq('status', 'Finalizada').execute()
+        sala_ids = []
+        if resp and resp.data:
+            for r in resp.data:
+                sid = r.get('sala_id')
+                # sala_id pode vir como objecto dependendo do select; tentamos extrair .id
+                if isinstance(sid, dict):
+                    val = sid.get('id')
+                else:
+                    val = sid
+                if val and val not in sala_ids:
+                    sala_ids.append(val)
+
+        if not sala_ids:
+            return jsonify([]), 200
+
+        # Buscar detalhes das salas encontradas
+        resp2 = supabase.table('salas').select('id,sala').in_('id', sala_ids).order('sala', asc=True).execute()
+        data2 = resp2.data or []
+        return jsonify(data2), 200
+
     except Exception as e:
-        # Se der erro, o log do Render deve mostrar a query incorreta (400 Bad Request)
-        return jsonify({"error": f"Erro ao buscar salas: {e}", "status": 500}), 500
+        logging.exception("Erro /api/salas")
+        return jsonify({"error": str(e)}), 500
+
 
 # ROTA 2: API GET: Listagem de Funcionários/Tutores
 @app.route('/api/funcionarios', methods=['GET'])
@@ -515,6 +554,52 @@ def api_ocorrencias_abertas():
             "status": 500
         }), 500
 
+@app.route('/api/alunos', methods=['GET'])
+def api_alunos():
+    """
+    Retorna alunos. Opcionalmente filtra por sala:
+      /api/alunos?sala=<sala_id>&finalizadas=true
+    Quando finalizadas=true, retornamos apenas alunos que possuem ocorrências finalizadas
+    (e pertencem à sala filtrada, se passada).
+    """
+    try:
+        sala = request.args.get('sala')
+        apenas_com_finalizadas = request.args.get('finalizadas', 'false').lower() in ('1','true','sim','y','yes')
+
+        if not apenas_com_finalizadas:
+            # retorno simples de alunos (ajuste tabela/coluna se necessário)
+            q = supabase.table('d_alunos').select('id,aluno_nome')
+            if sala:
+                q = q.eq('sala_id', sala)
+            resp = q.order('aluno_nome', asc=True).execute()
+            return jsonify(resp.data or []), 200
+
+        # Quando queremos apenas alunos com ocorrências finalizadas:
+        # buscamos ocorrencias finalizadas, opcionalmente filtrando por sala, e coletamos aluno_id
+        q = supabase.table('ocorrencias').select('aluno_id').eq('status', 'Finalizada')
+        if sala:
+            q = q.eq('sala_id', sala)
+        resp = q.execute()
+        aluno_ids = []
+        if resp and resp.data:
+            for r in resp.data:
+                aid = r.get('aluno_id')
+                if isinstance(aid, dict):
+                    val = aid.get('id')
+                else:
+                    val = aid
+                if val and val not in aluno_ids:
+                    aluno_ids.append(val)
+
+        if not aluno_ids:
+            return jsonify([]), 200
+
+        resp2 = supabase.table('d_alunos').select('id,aluno_nome').in_('id', aluno_ids).order('aluno_nome', asc=True).execute()
+        return jsonify(resp2.data or []), 200
+
+    except Exception as e:
+        logging.exception("Erro /api/alunos")
+        return jsonify({"error": str(e)}), 500
 
 # ============================================================
 # 🔹 API: Buscar detalhes de uma ocorrência específica por ID
@@ -1490,6 +1575,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
