@@ -690,43 +690,62 @@ from flask import jsonify
 
 # Em app.py
 
-@app.route('/api/ocorrencias_finalizadas')
-def get_ocorrencias_finalizadas():
+@app.route('/api/ocorrencias_finalizadas', methods=['GET'])
+def api_ocorrencias_finalizadas():
+    """
+    Retorna ocorrências com status Finalizada.
+    Aceita filtros combinados via query params:
+      ?sala=<sala_id>&aluno=<aluno_id>
+    """
     try:
-        # A query no Supabase continua a mesma, buscando os dados necessários
-        response = supabase.table('ocorrencias').select(
-            '*, professor_id(nome), sala_id(sala), tutor_id(nome)' # Garanta que os nomes de tabelas relacionadas estão corretos
-        ).order('data_hora', desc=True).execute()
+        sala = request.args.get('sala')
+        aluno = request.args.get('aluno')
 
-        if not response.data:
-            return jsonify([])
+        select = """
+            numero,
+            data_hora,
+            status,
+            aluno_nome,
+            tutor_nome,
+            sala_id(sala),
+            solicitado_tutor,
+            solicitado_coordenacao,
+            solicitado_gestao,
+            atendimento_tutor,
+            atendimento_coordenacao,
+            atendimento_gestao
+        """
+        q = supabase.table('ocorrencias').select(select).eq('status', 'Finalizada').order('data_hora', desc=True)
 
-        ocorrencias_finalizadas = []
-        for o in response.data:
-            # Ponto crucial: Se não houver data de atendimento do professor, a ocorrência não está finalizada.
-            if not o.get('dt_atendimento_professor'):
-                continue
+        if sala:
+            # sala pode chegar como string; filtramos por equality no campo sala_id
+            q = q.eq('sala_id', sala)
+        if aluno:
+            q = q.eq('aluno_id', aluno)
 
-            # Verifica cada nível solicitado. Se não foi solicitado, considera-se atendido (True).
-            tutor_atendido = not o.get('solicitado_tutor') or o.get('dt_atendimento_tutor')
-            coord_atendido = not o.get('solicitado_coordenacao') or o.get('dt_atendimento_coordenacao')
-            gestao_atendido = not o.get('solicitado_gestao') or o.get('dt_atendimento_gestao')
-
-            # Se todos os níveis (incluindo os não solicitados) estiverem "OK", a ocorrência é finalizada.
-            if tutor_atendido and coord_atendido and gestao_atendido:
-                # CORREÇÃO PARA FRONTEND: Adiciona os nomes em campos fáceis de acessar
-                if o.get('sala_id') and isinstance(o.get('sala_id'), dict):
-                    o['sala_nome'] = o['sala_id'].get('sala')
-                if o.get('tutor_id') and isinstance(o.get('tutor_id'), dict):
-                    o['tutor_nome'] = o['tutor_id'].get('nome')
-                
-                ocorrencias_finalizadas.append(o)
-        
-        return jsonify(ocorrencias_finalizadas)
-
+        resp = q.execute()
+        items = resp.data or []
+        out = []
+        for it in items:
+            out.append({
+                "numero": it.get('numero'),
+                "data_hora": formatar_data_hora(it.get('data_hora')),
+                "status": it.get('status'),
+                "aluno_nome": it.get('aluno_nome'),
+                "tutor_nome": it.get('tutor_nome'),
+                "sala_nome": (it.get('sala_id') or {}).get('sala', ''),
+                "solicitado_tutor": it.get('solicitado_tutor', False),
+                "solicitado_coordenacao": it.get('solicitado_coordenacao', False),
+                "solicitado_gestao": it.get('solicitado_gestao', False),
+                "atendimento_tutor": it.get('atendimento_tutor') or '',
+                "atendimento_coordenacao": it.get('atendimento_coordenacao') or '',
+                "atendimento_gestao": it.get('atendimento_gestao') or '',
+            })
+        return jsonify(out), 200
     except Exception as e:
-        print(f"Erro em /api/ocorrencias_finalizadas: {e}") # Ajuda a depurar
+        logging.exception("Erro /api/ocorrencias_finalizadas")
         return jsonify({"error": str(e)}), 500
+
         
 # ROTA 12.1: API GET: Horários Fixos por Nível (NOVO - Módulo Aulas)
 @app.route('/api/horarios_fixos/<nivel_ensino>', methods=['GET'])
@@ -1571,6 +1590,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
