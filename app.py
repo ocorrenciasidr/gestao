@@ -448,26 +448,34 @@ def api_get_agendamentos_pendentes(professor_id):
     except Exception as e:
         return jsonify({"error": f"Erro ao buscar agendamentos pendentes: {e}", "status": 500}), 500
 
+# ===== Helpers =====
+def _to_bool(value):
+    """Converte vários formatos possíveis para booleano seguro."""
+    if value is True or value == 1:
+        return True
+    if value is False or value == 0 or value is None:
+        return False
+    s = str(value).strip().lower()
+    if s in ('true', '1', 't', 'y', 'yes', 'sim'):
+        return True
+    if s in ('false', '0', 'f', 'n', 'no', 'nao', 'não', 'nao'):
+        return False
+    return False
+
+DEFAULT_AUTOTEXT = "ATENDIMENTO NÃO SOLICITADO PELO RESPONSÁVEL DA OCORRÊNCIA"
+
+
 # =========================
-# ROTAS DE OCORRÊNCIAS ABERTAS E FINALIZADAS
+# /api/ocorrencias_abertas
 # =========================
-
-# ==========================================================
-# ROTAS DE OCORRÊNCIAS ABERTAS E FINALIZADAS (versão revisada)
-# ==========================================================
-
-# ==========================================================
-# ROTAS DE OCORRÊNCIAS ABERTAS E FINALIZADAS (com resposta automática)
-# ==========================================================
-
 @app.route('/api/ocorrencias_abertas', methods=['GET'])
 def api_ocorrencias_abertas():
     """
-    Retorna as ocorrências abertas e aplica respostas automáticas
-    para os níveis não solicitados.
+    Retorna ocorrências 'Aberta' (com pendências). 
+    Aplica respostas automáticas para solicitacao=False e atualiza status no banco.
     """
     try:
-        response = supabase.table('ocorrencias').select(
+        resp = supabase.table('ocorrencias').select(
             """
             numero,
             data_hora,
@@ -485,74 +493,96 @@ def api_ocorrencias_abertas():
             """
         ).order('data_hora', desc=True).execute()
 
-        ocorrencias_data = response.data or []
+        items = resp.data or []
         abertas = []
 
-        for item in ocorrencias_data:
+        for item in items:
             numero = item.get('numero')
             update_fields = {}
 
-            # === Regras automáticas de atendimento ===
-            if item.get('solicitado_tutor') is False and not item.get('atendimento_tutor'):
-                update_fields['atendimento_tutor'] = "ATENDIMENTO NÃO SOLICITADO PELO RESPONSÁVEL DA OCORRÊNCIA"
+            # normalize solicitations to booleans
+            st = _to_bool(item.get('solicitado_tutor'))
+            sc = _to_bool(item.get('solicitado_coordenacao'))
+            sg = _to_bool(item.get('solicitado_gestao'))
 
-            if item.get('solicitado_coordenacao') is False and not item.get('atendimento_coordenacao'):
-                update_fields['atendimento_coordenacao'] = "ATENDIMENTO NÃO SOLICITADO PELO RESPONSÁVEL DA OCORRÊNCIA"
+            # current atendimento values (strings)
+            at_tutor = (item.get('atendimento_tutor') or "").strip()
+            at_coord = (item.get('atendimento_coordenacao') or "").strip()
+            at_gest = (item.get('atendimento_gestao') or "").strip()
 
-            if item.get('solicitado_gestao') is False and not item.get('atendimento_gestao'):
-                update_fields['atendimento_gestao'] = "ATENDIMENTO NÃO SOLICITADO PELO RESPONSÁVEL DA OCORRÊNCIA"
+            # If solicitacao is False AND atendimento is empty -> set default text (locally and queue update)
+            if not st and at_tutor == "":
+                at_tutor = DEFAULT_AUTOTEXT
+                update_fields['atendimento_tutor'] = at_tutor
 
-            # --- Verifica pendências ---
-            pendente_tutor = item.get('solicitado_tutor') and not item.get('atendimento_tutor')
-            pendente_coord = item.get('solicitado_coordenacao') and not item.get('atendimento_coordenacao')
-            pendente_gestao = item.get('solicitado_gestao') and not item.get('atendimento_gestao')
+            if not sc and at_coord == "":
+                at_coord = DEFAULT_AUTOTEXT
+                update_fields['atendimento_coordenacao'] = at_coord
 
-            # --- Determina status ---
-            if pendente_tutor or pendente_coord or pendente_gestao:
-                novo_status = "Aberta"
-            else:
-                novo_status = "Finalizada"
+            if not sg and at_gest == "":
+                at_gest = DEFAULT_AUTOTEXT
+                update_fields['atendimento_gestao'] = at_gest
 
+            # After potentially filling automatic texts, recalc pendencias:
+            pendente_tutor = st and (at_tutor == "")
+            pendente_coord = sc and (at_coord == "")
+            pendente_gestao = sg and (at_gest == "")
+
+            # Decide novo status
+            novo_status = "Aberta" if (pendente_tutor or pendente_coord or pendente_gestao) else "Finalizada"
+
+            # Queue status update if differs
             if item.get('status') != novo_status:
                 update_fields['status'] = novo_status
 
-            # Atualiza apenas se algo mudou
+            # Perform update if needed
             if update_fields:
-                supabase.table('ocorrencias').update(update_fields).eq('numero', numero).execute()
+                try:
+                    upd = supabase.table('ocorrencias').update(update_fields).eq('numero', numero).execute()
+                    logging.info(f"Atualizado ocorrencia {numero}: {update_fields} -> supabase result: {getattr(upd, 'status_code', 'ok')}")
+                except Exception as ue:
+                    logging.exception(f"Falha ao atualizar ocorrencia {numero}: {ue}")
 
+            # Only include in 'abertas' list those that remain abertas
             if novo_status == "Aberta":
                 abertas.append({
                     "numero": numero,
                     "data_hora": formatar_data_hora(item.get('data_hora')),
                     "aluno_nome": item.get('aluno_nome', 'N/A'),
                     "tutor_nome": item.get('tutor_nome', 'N/A'),
-                    "professor_nome": item.get('professor_id', {}).get('nome', 'N/A'),
-                    "sala_nome": item.get('sala_id', {}).get('sala', 'N/A'),
+                    "professor_nome": (item.get('professor_id') or {}).get('nome', 'N/A'),
+                    "sala_nome": (item.get('sala_id') or {}).get('sala', 'N/A'),
                     "status": novo_status,
-                    "solicitado_tutor": item.get('solicitado_tutor'),
-                    "solicitado_coordenacao": item.get('solicitado_coordenacao'),
-                    "solicitado_gestao": item.get('solicitado_gestao'),
-                    "atendimento_tutor": item.get('atendimento_tutor'),
-                    "atendimento_coordenacao": item.get('atendimento_coordenacao'),
-                    "atendimento_gestao": item.get('atendimento_gestao')
+                    "solicitado_tutor": st,
+                    "solicitado_coordenacao": sc,
+                    "solicitado_gestao": sg,
+                    "atendimento_tutor": at_tutor,
+                    "atendimento_coordenacao": at_coord,
+                    "atendimento_gestao": at_gest
                 })
 
         return jsonify(abertas), 200
 
     except Exception as e:
-        logging.exception("Erro ao buscar ocorrências abertas:")
+        logging.exception("Erro /api/ocorrencias_abertas")
         return jsonify({"error": str(e)}), 500
 
 
-
+# ================================
+# /api/ocorrencias_finalizadas
+# ================================
 @app.route('/api/ocorrencias_finalizadas', methods=['GET'])
 def api_ocorrencias_finalizadas():
     """
-    Retorna as ocorrências finalizadas e aplica respostas automáticas
-    para os níveis não solicitados.
+    Retorna ocorrências 'Finalizada'. Também aplica respostas automáticas para solicitacao=False.
+    Aceita filtros via query params (opcional).
     """
     try:
-        response = supabase.table('ocorrencias').select(
+        # optional filters
+        sala = request.args.get('sala')
+        aluno = request.args.get('aluno')
+
+        q = supabase.table('ocorrencias').select(
             """
             numero,
             data_hora,
@@ -568,65 +598,86 @@ def api_ocorrencias_finalizadas():
             professor_id(nome),
             sala_id(sala)
             """
-        ).order('data_hora', desc=True).execute()
+        ).order('data_hora', desc=True)
 
-        ocorrencias_data = response.data or []
+        if sala:
+            q = q.eq('sala_id', sala)
+        if aluno:
+            q = q.eq('aluno_id', aluno)
+
+        resp = q.execute()
+        items = resp.data or []
         finalizadas = []
 
-        for item in ocorrencias_data:
+        for item in items:
             numero = item.get('numero')
             update_fields = {}
 
-            # === Regras automáticas de atendimento ===
-            if item.get('solicitado_tutor') is False and not item.get('atendimento_tutor'):
-                update_fields['atendimento_tutor'] = "ATENDIMENTO NÃO SOLICITADO PELO RESPONSÁVEL DA OCORRÊNCIA"
+            # normalize solicitations to booleans
+            st = _to_bool(item.get('solicitado_tutor'))
+            sc = _to_bool(item.get('solicitado_coordenacao'))
+            sg = _to_bool(item.get('solicitado_gestao'))
 
-            if item.get('solicitado_coordenacao') is False and not item.get('atendimento_coordenacao'):
-                update_fields['atendimento_coordenacao'] = "ATENDIMENTO NÃO SOLICITADO PELO RESPONSÁVEL DA OCORRÊNCIA"
+            # current atendimento values (strings)
+            at_tutor = (item.get('atendimento_tutor') or "").strip()
+            at_coord = (item.get('atendimento_coordenacao') or "").strip()
+            at_gest = (item.get('atendimento_gestao') or "").strip()
 
-            if item.get('solicitado_gestao') is False and not item.get('atendimento_gestao'):
-                update_fields['atendimento_gestao'] = "ATENDIMENTO NÃO SOLICITADO PELO RESPONSÁVEL DA OCORRÊNCIA"
+            # Automatic fill if solicitacao False AND atendimento empty
+            if not st and at_tutor == "":
+                at_tutor = DEFAULT_AUTOTEXT
+                update_fields['atendimento_tutor'] = at_tutor
 
-            # --- Verifica pendências ---
-            pendente_tutor = item.get('solicitado_tutor') and not item.get('atendimento_tutor')
-            pendente_coord = item.get('solicitado_coordenacao') and not item.get('atendimento_coordenacao')
-            pendente_gestao = item.get('solicitado_gestao') and not item.get('atendimento_gestao')
+            if not sc and at_coord == "":
+                at_coord = DEFAULT_AUTOTEXT
+                update_fields['atendimento_coordenacao'] = at_coord
 
-            # --- Determina status ---
-            if pendente_tutor or pendente_coord or pendente_gestao:
-                novo_status = "Aberta"
-            else:
-                novo_status = "Finalizada"
+            if not sg and at_gest == "":
+                at_gest = DEFAULT_AUTOTEXT
+                update_fields['atendimento_gestao'] = at_gest
+
+            # Recalc pendencias after auto-fill
+            pendente_tutor = st and (at_tutor == "")
+            pendente_coord = sc and (at_coord == "")
+            pendente_gestao = sg and (at_gest == "")
+
+            # Determine new status
+            novo_status = "Aberta" if (pendente_tutor or pendente_coord or pendente_gestao) else "Finalizada"
 
             if item.get('status') != novo_status:
                 update_fields['status'] = novo_status
 
+            # Apply update if needed
             if update_fields:
-                supabase.table('ocorrencias').update(update_fields).eq('numero', numero).execute()
+                try:
+                    upd = supabase.table('ocorrencias').update(update_fields).eq('numero', numero).execute()
+                    logging.info(f"Atualizado ocorrencia {numero}: {update_fields} -> supabase result: {getattr(upd, 'status_code', 'ok')}")
+                except Exception as ue:
+                    logging.exception(f"Falha ao atualizar ocorrencia {numero}: {ue}")
 
+            # Append only finalizadas
             if novo_status == "Finalizada":
                 finalizadas.append({
                     "numero": numero,
                     "data_hora": formatar_data_hora(item.get('data_hora')),
                     "aluno_nome": item.get('aluno_nome', 'N/A'),
                     "tutor_nome": item.get('tutor_nome', 'N/A'),
-                    "professor_nome": item.get('professor_id', {}).get('nome', 'N/A'),
-                    "sala_nome": item.get('sala_id', {}).get('sala', 'N/A'),
+                    "professor_nome": (item.get('professor_id') or {}).get('nome', 'N/A'),
+                    "sala_nome": (item.get('sala_id') or {}).get('sala', 'N/A'),
                     "status": novo_status,
-                    "solicitado_tutor": item.get('solicitado_tutor'),
-                    "solicitado_coordenacao": item.get('solicitado_coordenacao'),
-                    "solicitado_gestao": item.get('solicitado_gestao'),
-                    "atendimento_tutor": item.get('atendimento_tutor'),
-                    "atendimento_coordenacao": item.get('atendimento_coordenacao'),
-                    "atendimento_gestao": item.get('atendimento_gestao')
+                    "solicitado_tutor": st,
+                    "solicitado_coordenacao": sc,
+                    "solicitado_gestao": sg,
+                    "atendimento_tutor": at_tutor,
+                    "atendimento_coordenacao": at_coord,
+                    "atendimento_gestao": at_gest
                 })
 
         return jsonify(finalizadas), 200
 
     except Exception as e:
-        logging.exception("Erro ao buscar ocorrências finalizadas:")
+        logging.exception("Erro /api/ocorrencias_finalizadas")
         return jsonify({"error": str(e)}), 500
-
 
 # ============================================================
 # 🔹 API: Buscar detalhes de uma ocorrência específica por ID
@@ -1564,6 +1615,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
