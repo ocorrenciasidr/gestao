@@ -452,11 +452,15 @@ def api_get_agendamentos_pendentes(professor_id):
 # ROTAS DE OCORRÊNCIAS ABERTAS E FINALIZADAS
 # =========================
 
+# ==========================================================
+# ROTAS DE OCORRÊNCIAS ABERTAS E FINALIZADAS (versão revisada)
+# ==========================================================
+
 @app.route('/api/ocorrencias_abertas', methods=['GET'])
 def api_ocorrencias_abertas():
     """
-    Retorna todas as ocorrências abertas (com T, C ou G pendentes)
-    e sincroniza o campo 'status' automaticamente com base nas condições.
+    Retorna todas as ocorrências com status 'Aberta',
+    e atualiza automaticamente o campo status conforme as regras.
     """
     try:
         response = supabase.table('ocorrencias').select(
@@ -482,18 +486,23 @@ def api_ocorrencias_abertas():
 
         for item in ocorrencias_data:
             numero = item.get('numero')
-            # --- Lógica de pendências ---
+
+            # --- Regras de pendência ---
             pendente_tutor = item.get('solicitado_tutor') and not item.get('atendimento_tutor')
             pendente_coord = item.get('solicitado_coordenacao') and not item.get('atendimento_coordenacao')
             pendente_gestao = item.get('solicitado_gestao') and not item.get('atendimento_gestao')
 
-            # Determina status
-            novo_status = "Aberta" if (pendente_tutor or pendente_coord or pendente_gestao) else "Finalizada"
+            # --- Determina status ---
+            if pendente_tutor or pendente_coord or pendente_gestao:
+                novo_status = "Aberta"
+            else:
+                novo_status = "Finalizada"
 
-            # Atualiza status no banco se estiver incorreto
+            # Atualiza status se estiver incorreto
             if item.get('status') != novo_status:
                 supabase.table('ocorrencias').update({"status": novo_status}).eq("numero", numero).execute()
 
+            # Apenas mantém na lista as ocorrências abertas
             if novo_status == "Aberta":
                 abertas.append({
                     "numero": numero,
@@ -518,11 +527,12 @@ def api_ocorrencias_abertas():
         return jsonify({"error": str(e)}), 500
 
 
+
 @app.route('/api/ocorrencias_finalizadas', methods=['GET'])
 def api_ocorrencias_finalizadas():
     """
-    Retorna todas as ocorrências finalizadas (nenhum atendimento pendente)
-    e sincroniza automaticamente o status no banco.
+    Retorna todas as ocorrências finalizadas.
+    Inclui as que nunca tiveram solicitações (T/C/G = False).
     """
     try:
         response = supabase.table('ocorrencias').select(
@@ -548,18 +558,23 @@ def api_ocorrencias_finalizadas():
 
         for item in ocorrencias_data:
             numero = item.get('numero')
-            # --- Lógica de pendências ---
+
+            # --- Regras de pendência ---
             pendente_tutor = item.get('solicitado_tutor') and not item.get('atendimento_tutor')
             pendente_coord = item.get('solicitado_coordenacao') and not item.get('atendimento_coordenacao')
             pendente_gestao = item.get('solicitado_gestao') and not item.get('atendimento_gestao')
 
-            # Determina status
-            novo_status = "Aberta" if (pendente_tutor or pendente_coord or pendente_gestao) else "Finalizada"
+            # --- Determina status ---
+            if pendente_tutor or pendente_coord or pendente_gestao:
+                novo_status = "Aberta"
+            else:
+                novo_status = "Finalizada"
 
-            # Atualiza status no banco se estiver incorreto
+            # Atualiza status no banco se necessário
             if item.get('status') != novo_status:
                 supabase.table('ocorrencias').update({"status": novo_status}).eq("numero", numero).execute()
 
+            # Apenas mantém finalizadas
             if novo_status == "Finalizada":
                 finalizadas.append({
                     "numero": numero,
@@ -582,8 +597,6 @@ def api_ocorrencias_finalizadas():
     except Exception as e:
         logging.exception("Erro ao buscar ocorrências finalizadas:")
         return jsonify({"error": str(e)}), 500
-
-
 
 # ============================================================
 # 🔹 API: Buscar detalhes de uma ocorrência específica por ID
@@ -1521,6 +1534,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
