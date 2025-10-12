@@ -448,11 +448,17 @@ def api_get_agendamentos_pendentes(professor_id):
     except Exception as e:
         return jsonify({"error": f"Erro ao buscar agendamentos pendentes: {e}", "status": 500}), 500
 
-# ROTA 10: API GET: Listagem de Todas Ocorrências (Módulo Ocorrência)
+# =========================
+# ROTAS DE OCORRÊNCIAS ABERTAS E FINALIZADAS
+# =========================
+
 @app.route('/api/ocorrencias_abertas', methods=['GET'])
 def api_ocorrencias_abertas():
+    """
+    Retorna todas as ocorrências abertas (com T, C ou G pendentes)
+    e sincroniza o campo 'status' automaticamente com base nas condições.
+    """
     try:
-        # Busca as ocorrências abertas com JOIN em professor e sala
         response = supabase.table('ocorrencias').select(
             """
             numero,
@@ -469,51 +475,114 @@ def api_ocorrencias_abertas():
             professor_id(nome),
             sala_id(sala)
             """
-        ).eq('status', 'Aberta').order('data_hora', desc=True).execute()
+        ).order('data_hora', desc=True).execute()
 
         ocorrencias_data = response.data or []
+        abertas = []
 
-        ocorrencias = []
         for item in ocorrencias_data:
-            # Determina se ainda existe algum atendimento pendente
-            pendente_tutor = item.get('solicitado_tutor') and not (item.get('atendimento_tutor') or "").strip()
-            pendente_coord = item.get('solicitado_coordenacao') and not (item.get('atendimento_coordenacao') or "").strip()
-            pendente_gestao = item.get('solicitado_gestao') and not (item.get('atendimento_gestao') or "").strip()
+            numero = item.get('numero')
+            # --- Lógica de pendências ---
+            pendente_tutor = item.get('solicitado_tutor') and not item.get('atendimento_tutor')
+            pendente_coord = item.get('solicitado_coordenacao') and not item.get('atendimento_coordenacao')
+            pendente_gestao = item.get('solicitado_gestao') and not item.get('atendimento_gestao')
 
-            # Somente inclui a ocorrência se ainda houver alguma pendência
-            if not (pendente_tutor or pendente_coord or pendente_gestao):
-                continue
+            # Determina status
+            novo_status = "Aberta" if (pendente_tutor or pendente_coord or pendente_gestao) else "Finalizada"
 
-            ocorrencia = {
-                "id": item.get('numero'),
-                "status": item.get('status'),
-                "data_hora": formatar_data_hora(item.get('data_hora')),
-                "aluno_nome": item.get('aluno_nome', 'N/A'),
-                "tutor_nome": item.get('tutor_nome', 'N/A'),
-                "professor_nome": item.get('professor_id', {}).get('nome', 'N/A'),
-                "sala_nome": item.get('sala_id', {}).get('sala', 'N/A'),
+            # Atualiza status no banco se estiver incorreto
+            if item.get('status') != novo_status:
+                supabase.table('ocorrencias').update({"status": novo_status}).eq("numero", numero).execute()
 
-                # Flags de solicitação
-                "solicitado_tutor": item.get('solicitado_tutor', False),
-                "solicitado_coordenacao": item.get('solicitado_coordenacao', False),
-                "solicitado_gestao": item.get('solicitado_gestao', False),
+            if novo_status == "Aberta":
+                abertas.append({
+                    "numero": numero,
+                    "data_hora": formatar_data_hora(item.get('data_hora')),
+                    "aluno_nome": item.get('aluno_nome', 'N/A'),
+                    "tutor_nome": item.get('tutor_nome', 'N/A'),
+                    "professor_nome": item.get('professor_id', {}).get('nome', 'N/A'),
+                    "sala_nome": item.get('sala_id', {}).get('sala', 'N/A'),
+                    "status": novo_status,
+                    "solicitado_tutor": item.get('solicitado_tutor'),
+                    "solicitado_coordenacao": item.get('solicitado_coordenacao'),
+                    "solicitado_gestao": item.get('solicitado_gestao'),
+                    "atendimento_tutor": item.get('atendimento_tutor'),
+                    "atendimento_coordenacao": item.get('atendimento_coordenacao'),
+                    "atendimento_gestao": item.get('atendimento_gestao')
+                })
 
-                # Campos de atendimento (para renderizar corretamente os botões T/C/G)
-                "atendimento_tutor": item.get('atendimento_tutor', ''),
-                "atendimento_coordenacao": item.get('atendimento_coordenacao', ''),
-                "atendimento_gestao": item.get('atendimento_gestao', ''),
-            }
-
-            ocorrencias.append(ocorrencia)
-
-        return jsonify(ocorrencias), 200
+        return jsonify(abertas), 200
 
     except Exception as e:
-        logging.error(f"Erro CRÍTICO ao buscar ocorrências abertas: {e}")
-        return jsonify({
-            "error": f"Erro interno ao carregar a lista: {e}",
-            "status": 500
-        }), 500
+        logging.exception("Erro ao buscar ocorrências abertas:")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/ocorrencias_finalizadas', methods=['GET'])
+def api_ocorrencias_finalizadas():
+    """
+    Retorna todas as ocorrências finalizadas (nenhum atendimento pendente)
+    e sincroniza automaticamente o status no banco.
+    """
+    try:
+        response = supabase.table('ocorrencias').select(
+            """
+            numero,
+            data_hora,
+            status,
+            aluno_nome,
+            tutor_nome,
+            solicitado_tutor,
+            solicitado_coordenacao,
+            solicitado_gestao,
+            atendimento_tutor,
+            atendimento_coordenacao,
+            atendimento_gestao,
+            professor_id(nome),
+            sala_id(sala)
+            """
+        ).order('data_hora', desc=True).execute()
+
+        ocorrencias_data = response.data or []
+        finalizadas = []
+
+        for item in ocorrencias_data:
+            numero = item.get('numero')
+            # --- Lógica de pendências ---
+            pendente_tutor = item.get('solicitado_tutor') and not item.get('atendimento_tutor')
+            pendente_coord = item.get('solicitado_coordenacao') and not item.get('atendimento_coordenacao')
+            pendente_gestao = item.get('solicitado_gestao') and not item.get('atendimento_gestao')
+
+            # Determina status
+            novo_status = "Aberta" if (pendente_tutor or pendente_coord or pendente_gestao) else "Finalizada"
+
+            # Atualiza status no banco se estiver incorreto
+            if item.get('status') != novo_status:
+                supabase.table('ocorrencias').update({"status": novo_status}).eq("numero", numero).execute()
+
+            if novo_status == "Finalizada":
+                finalizadas.append({
+                    "numero": numero,
+                    "data_hora": formatar_data_hora(item.get('data_hora')),
+                    "aluno_nome": item.get('aluno_nome', 'N/A'),
+                    "tutor_nome": item.get('tutor_nome', 'N/A'),
+                    "professor_nome": item.get('professor_id', {}).get('nome', 'N/A'),
+                    "sala_nome": item.get('sala_id', {}).get('sala', 'N/A'),
+                    "status": novo_status,
+                    "solicitado_tutor": item.get('solicitado_tutor'),
+                    "solicitado_coordenacao": item.get('solicitado_coordenacao'),
+                    "solicitado_gestao": item.get('solicitado_gestao'),
+                    "atendimento_tutor": item.get('atendimento_tutor'),
+                    "atendimento_coordenacao": item.get('atendimento_coordenacao'),
+                    "atendimento_gestao": item.get('atendimento_gestao')
+                })
+
+        return jsonify(finalizadas), 200
+
+    except Exception as e:
+        logging.exception("Erro ao buscar ocorrências finalizadas:")
+        return jsonify({"error": str(e)}), 500
+
 
 
 # ============================================================
@@ -1490,6 +1559,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
