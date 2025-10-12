@@ -1,169 +1,215 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Ocorrências Finalizadas</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<script>
-  tailwind.config = { theme: { extend: { colors: { 'dark-primary':'#0F172A','dark-secondary':'#1E293B','accent':'#10B981','text-light':'#F8FAFC','tutor-color':'#007ACC','coord-color':'#F59E0B','gestao-color':'#EF4444' }}}};
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ocorrências Finalizadas</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'dark-primary': '#0F172A',
+            'dark-secondary': '#1E293B',
+            'accent': '#10B981',
+            'text-light': '#F8FAFC',
+            'danger': '#DC2626',
+            'tutor-color': '#007ACC',
+            'coord-color': '#F59E0B',
+            'gestao-color': '#EF4444',
+          },
+          fontFamily: { sans: ['Inter', 'sans-serif'] },
+        },
+      },
+    };
 
-  document.addEventListener('DOMContentLoaded', () => {
-    carregarFiltros();
-    carregarOcorrencias();
-    document.getElementById('filtro-sala').addEventListener('change', carregarOcorrencias);
-    document.getElementById('filtro-aluno').addEventListener('change', carregarOcorrencias);
-    document.getElementById('btn-limpar-filtros').addEventListener('click', () => {
-      document.getElementById('filtro-sala').value = '';
-      document.getElementById('filtro-aluno').value = '';
-      carregarOcorrencias();
-    });
-  });
+    document.addEventListener("DOMContentLoaded", carregarOcorrencias);
 
-  function mostrarMensagem(texto, tipo = 'info') {
-    const el = document.getElementById('mensagem-status');
-    el.textContent = texto;
-    el.className = 'fixed top-4 right-4 p-3 rounded z-50 text-text-light';
-    if (tipo === 'success') el.style.background = '#10B981';
-    else if (tipo === 'danger') el.style.background = '#DC2626';
-    else el.style.background = '#1E293B';
-    setTimeout(()=> el.textContent = '', 3000);
-  }
+    let todasOcorrencias = [];
 
-  // Preenche os selects Sala e Aluno (APIs simples: /api/salas, /api/alunos?sala=)
-  async function carregarFiltros() {
-    try {
-      const [rS, rA] = await Promise.all([fetch('/api/salas'), fetch('/api/alunos')]);
-      const salas = rS.ok ? await rS.json() : [];
-      const alunos = rA.ok ? await rA.json() : [];
+    // Exibe mensagens
+    function mostrarMensagem(texto, tipo) {
+      const msg = document.getElementById("mensagem-status");
+      msg.textContent = texto;
+      msg.className = "fixed top-4 right-4 p-3 rounded-lg shadow-xl text-text-light font-medium transition duration-300 z-50";
 
-      const selSala = document.getElementById('filtro-sala');
-      selSala.innerHTML = '<option value="">-- Todas as salas --</option>';
-      salas.forEach(s => {
-        const opt = document.createElement('option');
-        opt.value = s.id ?? s.sala ?? s.sala_id ?? s.sala_nome;
-        opt.text = s.sala ?? s.sala_nome ?? String(s.id);
-        selSala.appendChild(opt);
-      });
+      if (tipo === "success") msg.classList.add("bg-accent");
+      else if (tipo === "danger") msg.classList.add("bg-danger");
+      else msg.classList.add("bg-dark-secondary", "text-yellow-400");
 
-      const selAluno = document.getElementById('filtro-aluno');
-      selAluno.innerHTML = '<option value="">-- Todos os alunos --</option>';
-      alunos.forEach(a => {
-        const opt = document.createElement('option');
-        opt.value = a.id ?? a.aluno_id ?? a.aluno_num ?? a.aluno_nome;
-        opt.text = a.aluno_nome ?? a.nome ?? String(opt.value);
-        selAluno.appendChild(opt);
-      });
-
-    } catch (e) {
-      console.error('Erro filtros:', e);
-      mostrarMensagem('Falha ao carregar filtros', 'danger');
+      msg.classList.remove("hidden");
+      setTimeout(() => msg.classList.add("hidden"), 4000);
     }
-  }
 
-  // Renderiza T/C/G seguindo a regra: aparece se solicitado_* == true AND atendimento_* vazio
-  function renderizarAcoes(occ) {
-    const numero = occ.numero;
-    let html = `<div class="flex items-center space-x-2">
-      <a href="/gestao_ocorrencia_editar?id=${numero}&modo=visualizar" title="Visualizar" class="text-gray-400 hover:text-accent">
-        <!-- lupa -->
-        <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-      </a>`;
+    // Lógica T / C / G
+    function renderizarAcoes(ocorrencia) {
+      const numero = ocorrencia.numero;
+      let html = `
+        <div class="flex items-center space-x-3">
+          <a href="/gestao_ocorrencia_editar?id=${numero}&modo=visualizar" title="Visualizar"
+            class="text-gray-400 hover:text-accent transition duration-150">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+            </svg>
+          </a>`;
 
-    // conversões seguras
-    const st = occ.solicitado_tutor === true || occ.solicitado_tutor === 'true' || occ.solicitado_tutor === 1;
-    const sc = occ.solicitado_coordenacao === true || occ.solicitado_coordenacao === 'true' || occ.solicitado_coordenacao === 1;
-    const sg = occ.solicitado_gestao === true || occ.solicitado_gestao === 'true' || occ.solicitado_gestao === 1;
+      let indicadores = "";
 
-    const at = (occ.atendimento_tutor || '').toString().trim();
-    const ac = (occ.atendimento_coordenacao || '').toString().trim();
-    const ag = (occ.atendimento_gestao || '').toString().trim();
+      if (ocorrencia.solicitado_tutor && (!ocorrencia.atendimento_tutor || ocorrencia.atendimento_tutor.trim() === "")) {
+        indicadores += `<a href="/gestao_ocorrencia_editar?id=${numero}&modo=atendimento&nivel=tutor"
+          class="bg-tutor-color/20 text-tutor-color text-xs font-bold px-2 py-1 rounded-full border border-tutor-color hover:bg-tutor-color hover:text-white transition">T</a>`;
+      }
+      if (ocorrencia.solicitado_coordenacao && (!ocorrencia.atendimento_coordenacao || ocorrencia.atendimento_coordenacao.trim() === "")) {
+        indicadores += `<a href="/gestao_ocorrencia_editar?id=${numero}&modo=atendimento&nivel=coordenacao"
+          class="bg-coord-color/20 text-coord-color text-xs font-bold px-2 py-1 rounded-full border border-coord-color hover:bg-coord-color hover:text-white transition">C</a>`;
+      }
+      if (ocorrencia.solicitado_gestao && (!ocorrencia.atendimento_gestao || ocorrencia.atendimento_gestao.trim() === "")) {
+        indicadores += `<a href="/gestao_ocorrencia_editar?id=${numero}&modo=atendimento&nivel=gestao"
+          class="bg-gestao-color/20 text-gestao-color text-xs font-bold px-2 py-1 rounded-full border border-gestao-color hover:bg-gestao-color hover:text-white transition">G</a>`;
+      }
 
-    if (st && at === '') html += `<a href="/gestao_ocorrencia_editar?id=${numero}&modo=atendimento&nivel=tutor" class="text-xs font-bold px-2 py-0.5 rounded-full border border-tutor-color bg-tutor-color/10 text-tutor-color">T</a>`;
-    if (sc && ac === '') html += `<a href="/gestao_ocorrencia_editar?id=${numero}&modo=atendimento&nivel=coordenacao" class="text-xs font-bold px-2 py-0.5 rounded-full border border-coord-color bg-coord-color/10 text-coord-color">C</a>`;
-    if (sg && ag === '') html += `<a href="/gestao_ocorrencia_editar?id=${numero}&modo=atendimento&nivel=gestao" class="text-xs font-bold px-2 py-0.5 rounded-full border border-gestao-color bg-gestao-color/10 text-gestao-color">G</a>`;
+      if (indicadores) html += `<div class="ml-4 space-x-2">${indicadores}</div>`;
+      html += `</div>`;
+      return html;
+    }
 
-    html += '</div>';
-    return html;
-  }
+    // Carregar ocorrências da API
+    async function carregarOcorrencias() {
+      const tabela = document.getElementById("ocorrencias-corpo");
+      try {
+        mostrarMensagem("Carregando ocorrências finalizadas...", "info");
+        const res = await fetch("/api/ocorrencias_finalizadas");
+        todasOcorrencias = await res.json();
+        popularFiltros(todasOcorrencias);
+        exibirOcorrencias(todasOcorrencias);
+        mostrarMensagem("Ocorrências carregadas!", "success");
+      } catch (e) {
+        console.error(e);
+        mostrarMensagem("Erro ao carregar ocorrências.", "danger");
+      }
+    }
 
-  // Carregar tabela finalizadas com filtros opcionais
-  async function carregarOcorrencias() {
-    mostrarMensagem('Carregando...', 'info');
-    const tabela = document.getElementById('ocorrencias-corpo');
-    tabela.innerHTML = '<tr><td colspan="6" class="py-6 text-center text-gray-400">Carregando...</td></tr>';
+    // Popula filtros de Sala e Aluno
+    function popularFiltros(dados) {
+      const filtroSala = document.getElementById("filtro-sala");
+      const filtroAluno = document.getElementById("filtro-aluno");
 
-    const sala = encodeURIComponent(document.getElementById('filtro-sala').value || '');
-    const aluno = encodeURIComponent(document.getElementById('filtro-aluno').value || '');
-    let url = '/api/ocorrencias_finalizadas';
-    const params = [];
-    if (sala) params.push(`sala=${sala}`);
-    if (aluno) params.push(`aluno=${aluno}`);
-    if (params.length) url += '?' + params.join('&');
+      const salasUnicas = [...new Set(dados.map(o => o.sala_nome).filter(Boolean))];
+      filtroSala.innerHTML = `<option value="">Todas as Salas</option>` +
+        salasUnicas.map(s => `<option value="${s}">${s}</option>`).join("");
 
-    try {
-      const resp = await fetch(url);
-      if (!resp.ok) throw new Error('Falha ao buscar finalizadas');
-      const data = await resp.json();
-      if (!Array.isArray(data) || data.length === 0) {
-        tabela.innerHTML = '<tr><td colspan="6" class="py-6 text-center text-gray-400">Nenhuma ocorrência finalizada.</td></tr>';
+      const alunosUnicos = [...new Set(dados.map(o => o.aluno_nome).filter(Boolean))];
+      filtroAluno.innerHTML = `<option value="">Todos os Alunos</option>` +
+        alunosUnicos.map(a => `<option value="${a}">${a}</option>`).join("");
+    }
+
+    function filtrarPorSala() {
+      const sala = document.getElementById("filtro-sala").value;
+      const filtroAluno = document.getElementById("filtro-aluno");
+
+      let alunos = todasOcorrencias
+        .filter(o => !sala || o.sala_nome === sala)
+        .map(o => o.aluno_nome)
+        .filter(Boolean);
+      alunos = [...new Set(alunos)];
+
+      filtroAluno.innerHTML = `<option value="">Todos os Alunos</option>` +
+        alunos.map(a => `<option value="${a}">${a}</option>`).join("");
+
+      aplicarFiltros();
+    }
+
+    function filtrarPorAluno() { aplicarFiltros(); }
+
+    function aplicarFiltros() {
+      const sala = document.getElementById("filtro-sala").value;
+      const aluno = document.getElementById("filtro-aluno").value;
+
+      const filtradas = todasOcorrencias.filter(o =>
+        (!sala || o.sala_nome === sala) &&
+        (!aluno || o.aluno_nome === aluno)
+      );
+
+      exibirOcorrencias(filtradas);
+    }
+
+    // Renderiza tabela
+    function exibirOcorrencias(lista) {
+      const corpo = document.getElementById("ocorrencias-corpo");
+      if (!lista.length) {
+        corpo.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-gray-400">Nenhuma ocorrência encontrada.</td></tr>`;
         return;
       }
-      let html = '';
-      data.forEach(occ => {
-        html += `<tr class="hover:bg-dark-secondary/50">
-          <td class="p-3 text-sm font-medium text-text-light">${occ.numero}</td>
-          <td class="p-3 text-sm text-gray-300">${occ.aluno_nome || ''}</td>
-          <td class="p-3 text-sm text-gray-300">${occ.sala_nome || ''}</td>
-          <td class="p-3 text-sm text-gray-300">${occ.tutor_nome || ''}</td>
-          <td class="p-3 text-sm text-gray-300">${occ.status || ''}</td>
-          <td class="p-3 text-sm whitespace-nowrap">${renderizarAcoes(occ)}</td>
-        </tr>`;
-      });
-      tabela.innerHTML = html;
-      mostrarMensagem('Finalizadas carregadas', 'success');
-    } catch (e) {
-      console.error(e);
-      tabela.innerHTML = '<tr><td colspan="6" class="py-6 text-center text-red-400">Erro ao carregar.</td></tr>';
-      mostrarMensagem('Erro ao carregar finalizadas', 'danger');
+
+      corpo.innerHTML = lista.map(o => `
+        <tr class="hover:bg-dark-secondary/50 transition duration-150">
+          <td class="p-3 text-sm font-medium text-text-light">${o.numero}</td>
+          <td class="p-3 text-sm text-gray-300">${o.data_hora || ""}</td>
+          <td class="p-3 text-sm text-gray-300">${o.aluno_nome || ""}</td>
+          <td class="p-3 text-sm text-gray-300">${o.sala_nome || ""}</td>
+          <td class="p-3 text-sm text-gray-300">${o.tutor_nome || ""}</td>
+          <td class="p-3 text-sm whitespace-nowrap">${renderizarAcoes(o)}</td>
+        </tr>`).join("");
     }
-  }
-</script>
+  </script>
 </head>
 
-<body class="bg-dark-primary min-h-screen p-6 text-text-light">
-  <div id="mensagem-status" class="hidden fixed top-4 right-4 p-3 rounded z-50 text-text-light"></div>
+<body class="bg-dark-primary min-h-screen p-8 text-text-light">
+  <div id="mensagem-status" class="hidden"></div>
 
   <div class="max-w-7xl mx-auto">
-    <header class="mb-6">
-      <h1 class="text-3xl font-bold text-accent">SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR</h1>
-      <div class="mt-3 flex gap-3">
-        <button onclick="window.location.href='/gestao_ocorrencia'" class="px-4 py-2 bg-gray-600 rounded">Voltar</button>
-        <button onclick="window.location.href='/gestao_ocorrencia_abertas'" class="px-4 py-2 bg-emerald-700 rounded">Abertas</button>
-        <button onclick="window.location.href='/gestao_ocorrencia_nova'" class="px-4 py-2 bg-accent rounded">Nova Ocorrência</button>
+    <header class="text-center mb-8 mt-4">
+      <h1 class="text-4xl font-extrabold text-accent">SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR</h1>
+      <h2 class="text-2xl text-text-light mt-2 font-light border-b border-gray-700 pb-2 inline-block">
+        OCORRÊNCIAS FINALIZADAS
+      </h2>
 
-        <div class="ml-auto flex gap-2">
-          <select id="filtro-sala" class="px-2 py-1 rounded bg-dark-secondary"></select>
-          <select id="filtro-aluno" class="px-2 py-1 rounded bg-dark-secondary"></select>
-          <button id="btn-limpar-filtros" class="px-3 py-1 rounded bg-gray-700">Limpar</button>
-        </div>
+      <div class="mt-4 flex flex-wrap justify-center gap-4">
+        <button onclick="window.location.href='/gestao_ocorrencia'" 
+          class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition">Voltar</button>
+        <button onclick="window.location.href='/gestao_ocorrencia_nova.html'"
+          class="bg-accent hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded-lg transition">Nova Ocorrência</button>
+        <button onclick="window.location.href='/gestao_ocorrencia_abertas'"
+          class="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg transition">Abertas</button>
       </div>
     </header>
 
-    <main class="bg-dark-secondary p-4 rounded">
-      <table class="w-full">
-        <thead class="text-xs text-gray-400">
+    <!-- 🔹 Filtros -->
+    <div class="flex flex-wrap justify-center gap-4 mb-6">
+      <div>
+        <label for="filtro-sala" class="block text-sm font-medium text-gray-300 mb-1">Sala</label>
+        <select id="filtro-sala" onchange="filtrarPorSala()"
+          class="bg-dark-secondary border border-gray-600 text-gray-200 rounded-lg px-3 py-2">
+          <option value="">Todas as Salas</option>
+        </select>
+      </div>
+
+      <div>
+        <label for="filtro-aluno" class="block text-sm font-medium text-gray-300 mb-1">Aluno</label>
+        <select id="filtro-aluno" onchange="filtrarPorAluno()"
+          class="bg-dark-secondary border border-gray-600 text-gray-200 rounded-lg px-3 py-2">
+          <option value="">Todos os Alunos</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 🔹 Tabela -->
+    <main class="overflow-x-auto bg-dark-secondary rounded-xl shadow-2xl p-4">
+      <table class="min-w-full divide-y divide-gray-700">
+        <thead class="bg-dark-primary">
           <tr>
-            <th class="text-left p-2">Número</th>
-            <th class="text-left p-2">Aluno</th>
-            <th class="text-left p-2">Sala</th>
-            <th class="text-left p-2">Tutor</th>
-            <th class="text-left p-2">Status</th>
-            <th class="text-left p-2">Ações</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Número</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Data Reg.</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Aluno</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Sala</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Tutor</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Ações</th>
           </tr>
         </thead>
-        <tbody id="ocorrencias-corpo" class="divide-y">
-          <tr><td colspan="6" class="py-6 text-center text-gray-400">Carregando dados...</td></tr>
+        <tbody id="ocorrencias-corpo" class="divide-y divide-gray-800">
+          <tr><td colspan="6" class="text-center py-4 text-gray-400">Carregando...</td></tr>
         </tbody>
       </table>
     </main>
