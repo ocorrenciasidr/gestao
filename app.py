@@ -679,6 +679,88 @@ def api_ocorrencias_finalizadas():
         logging.exception("Erro /api/ocorrencias_finalizadas")
         return jsonify({"error": str(e)}), 500
 
+# Em app.py
+@app.route('/api/ocorrencias_todas')
+def get_ocorrencias_todas():
+    try:
+        # Busca todas as ocorrências com os nomes relacionados para as estatísticas
+        response = supabase.table('ocorrencias').select(
+            '*, professor_id(nome), sala_id(sala), tutor_id(nome)'
+        ).execute()
+        
+        ocorrencias = []
+        for o in response.data:
+            # Simplifica os nomes para o frontend
+            if o.get('sala_id') and isinstance(o.get('sala_id'), dict):
+                o['sala_nome'] = o['sala_id'].get('sala')
+            if o.get('tutor_id') and isinstance(o.get('tutor_id'), dict):
+                o['tutor_nome'] = o['tutor_id'].get('nome')
+            ocorrencias.append(o)
+            
+        return jsonify(ocorrencias)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Em app.py
+
+# Rota 1: Retorna apenas salas que têm ocorrências
+@app.route('/api/salas_com_ocorrencias')
+def get_salas_com_ocorrencias():
+    try:
+        # Pega todos os IDs de sala distintos da tabela de ocorrências
+        ocorrencias = supabase.table('ocorrencias').select('sala_id').execute()
+        sala_ids = list(set([o['sala_id'] for o in ocorrencias.data if o.get('sala_id')]))
+        
+        # Busca os nomes dessas salas
+        salas = supabase.table('salas').select('id, nome_turma').in_('id', sala_ids).execute()
+        return jsonify(salas.data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Rota 2: Retorna apenas alunos de uma sala que têm ocorrências
+@app.route('/api/alunos_com_ocorrencias_por_sala/<int:sala_id>')
+def get_alunos_com_ocorrencias_por_sala(sala_id):
+    try:
+        ocorrencias = supabase.table('ocorrencias').select('aluno_id').eq('sala_id', sala_id).execute()
+        aluno_ids = list(set([o['aluno_id'] for o in ocorrencias.data if o.get('aluno_id')]))
+
+        alunos = supabase.table('alunos').select('id, nome').in_('id', aluno_ids).execute()
+        return jsonify(alunos.data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Rota 3: Gera os dados do relatório para impressão
+@app.route('/api/relatorio_ocorrencias')
+def get_relatorio_ocorrencias():
+    try:
+        sala_id = request.args.get('salaId')
+        aluno_id = request.args.get('alunoId')
+        data_inicial = request.args.get('dataInicial')
+        data_final = request.args.get('dataFinal')
+
+        query = supabase.table('ocorrencias').select('*, aluno_id(nome)').eq('sala_id', sala_id)
+        
+        if aluno_id:
+            query = query.eq('aluno_id', aluno_id)
+        
+        query = query.gte('data_hora', data_inicial).lte('data_hora', data_final)
+        
+        return jsonify(query.execute().data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Em app.py
+@app.route('/api/relatorio_frequencia')
+def get_relatorio_frequencia():
+    # Aqui você implementaria a lógica para buscar os dados de frequência
+    # com base nos filtros (sala, aluno, datas) do banco de dados.
+    # Exemplo de retorno:
+    return jsonify({
+        "presencas": 95, "faltas": 5, "atrasos": 3, "saidas": 1
+    })
+
+
+
 # ============================================================
 # 🔹 API: Buscar detalhes de uma ocorrência específica por ID
 # ============================================================
@@ -1615,6 +1697,7 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
