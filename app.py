@@ -9,7 +9,6 @@ import os # Importar para usar os.urandom.hex
 import json
 from datetime import datetime
 from flask import jsonify
-import logging
 
 # Configuração de Logs
 logging.basicConfig(level=logging.INFO)
@@ -54,15 +53,6 @@ def handle_supabase_response(response):
     # Caso algo diferente
     return []
 
-def formatar_data_hora(valor):
-    """Formata data/hora do Supabase (ISO) para pt-BR simples — se já tiver, ignore este bloco."""
-    if not valor:
-        return ""
-    try:
-        d = datetime.fromisoformat(valor)
-        return d.strftime("%d/%m/%Y %H:%M:%S")
-    except Exception:
-        return str(valor)
 # =================================================================
 # FUNÇÕES AUXILIARES
 # =================================================================
@@ -274,45 +264,16 @@ def gestao_cadastro_vincular_disciplina_sala():
 # ROTA 1: API GET: Listagem de Salas (CORRIGIDA)
 # Assume que d_salas tem as colunas id, sala, nivel_ensino
 @app.route('/api/salas', methods=['GET'])
-def api_salas():
-    """
-    Retorna lista de salas. Se ?finalizadas=true for enviado, retorna apenas salas
-    que possuem ocorrências finalizadas (usado para popular filtro da página Finalizadas).
-    """
+def api_get_salas():
     try:
-        apenas_com_finalizadas = request.args.get('finalizadas', 'false').lower() in ('1','true','sim','y','yes')
-        if not apenas_com_finalizadas:
-            resp = supabase.table('salas').select('id,sala').order('sala', asc=True).execute()
-            data = resp.data or []
-            return jsonify(data), 200
-
-        # Query: buscar salas que tenham ocorrências finalizadas
-        # Fazemos um select na tabela ocorrencias pedindo sala_id, distinct
-        resp = supabase.table('ocorrencias').select('sala_id').eq('status', 'Finalizada').execute()
-        sala_ids = []
-        if resp and resp.data:
-            for r in resp.data:
-                sid = r.get('sala_id')
-                # sala_id pode vir como objecto dependendo do select; tentamos extrair .id
-                if isinstance(sid, dict):
-                    val = sid.get('id')
-                else:
-                    val = sid
-                if val and val not in sala_ids:
-                    sala_ids.append(val)
-
-        if not sala_ids:
-            return jsonify([]), 200
-
-        # Buscar detalhes das salas encontradas
-        resp2 = supabase.table('salas').select('id,sala').in_('id', sala_ids).order('sala', asc=True).execute()
-        data2 = resp2.data or []
-        return jsonify(data2), 200
-
+        # SELECT nas colunas reais e ORDER pela coluna 'sala'
+        response = supabase.table('d_salas').select('id, sala, nivel_ensino').order('sala').execute()
+        # Mapeia 'sala' para 'nome' na resposta JSON para consistência
+        salas = [{"id": str(s['id']), "nome": f"{s['sala']} ({s['nivel_ensino']})", "nivel_ensino": s['nivel_ensino']} for s in handle_supabase_response(response)]
+        return jsonify(salas)
     except Exception as e:
-        logging.exception("Erro /api/salas")
-        return jsonify({"error": str(e)}), 500
-
+        # Se der erro, o log do Render deve mostrar a query incorreta (400 Bad Request)
+        return jsonify({"error": f"Erro ao buscar salas: {e}", "status": 500}), 500
 
 # ROTA 2: API GET: Listagem de Funcionários/Tutores
 @app.route('/api/funcionarios', methods=['GET'])
@@ -490,12 +451,10 @@ def api_get_agendamentos_pendentes(professor_id):
 # ROTA 10: API GET: Listagem de Todas Ocorrências (Módulo Ocorrência)
 @app.route('/api/ocorrencias_abertas', methods=['GET'])
 def api_ocorrencias_abertas():
-    """
-    Retorna ocorrências com pendências (solicitado_* == true e atendimento_* vazio).
-    Usa 'numero' como identificador.
-    """
     try:
-        select = """
+        # Busca as ocorrências abertas com JOIN em professor e sala
+        response = supabase.table('ocorrencias').select(
+            """
             numero,
             data_hora,
             status,
@@ -509,93 +468,53 @@ def api_ocorrencias_abertas():
             atendimento_gestao,
             professor_id(nome),
             sala_id(sala)
-        """
-        resp = supabase.table('ocorrencias').select(select).eq('status', 'Aberta').order('data_hora', desc=True).execute()
-        items = resp.data or []
-        out = []
-        for it in items:
-            st = it.get('solicitado_tutor', False)
-            sc = it.get('solicitado_coordenacao', False)
-            sg = it.get('solicitado_gestao', False)
+            """
+        ).eq('status', 'Aberta').order('data_hora', desc=True).execute()
 
-            at = (it.get('atendimento_tutor') or '').strip()
-            ac = (it.get('atendimento_coordenacao') or '').strip()
-            ag = (it.get('atendimento_gestao') or '').strip()
+        ocorrencias_data = response.data or []
 
-            pendenteTutor = (st is True or str(st).lower() == 'true' or st == 1) and at == ""
-            pendenteCoord = (sc is True or str(sc).lower() == 'true' or sc == 1) and ac == ""
-            pendenteGestao = (sg is True or str(sg).lower() == 'true' or sg == 1) and ag == ""
+        ocorrencias = []
+        for item in ocorrencias_data:
+            # Determina se ainda existe algum atendimento pendente
+            pendente_tutor = item.get('solicitado_tutor') and not (item.get('atendimento_tutor') or "").strip()
+            pendente_coord = item.get('solicitado_coordenacao') and not (item.get('atendimento_coordenacao') or "").strip()
+            pendente_gestao = item.get('solicitado_gestao') and not (item.get('atendimento_gestao') or "").strip()
 
-            # só inclui se houver alguma pendência
-            if not (pendenteTutor or pendenteCoord or pendenteGestao):
+            # Somente inclui a ocorrência se ainda houver alguma pendência
+            if not (pendente_tutor or pendente_coord or pendente_gestao):
                 continue
 
-            out.append({
-                "numero": it.get('numero'),
-                "data_hora": formatar_data_hora(it.get('data_hora')),
-                "status": it.get('status'),
-                "aluno_nome": it.get('aluno_nome'),
-                "tutor_nome": it.get('tutor_nome'),
-                "professor_nome": (it.get('professor_id') or {}).get('nome', ''),
-                "sala_nome": (it.get('sala_id') or {}).get('sala', ''),
-                "solicitado_tutor": it.get('solicitado_tutor', False),
-                "solicitado_coordenacao": it.get('solicitado_coordenacao', False),
-                "solicitado_gestao": it.get('solicitado_gestao', False),
-                "atendimento_tutor": it.get('atendimento_tutor') or '',
-                "atendimento_coordenacao": it.get('atendimento_coordenacao') or '',
-                "atendimento_gestao": it.get('atendimento_gestao') or '',
-            })
-        return jsonify(out), 200
-    except Exception as e:
-        logging.exception("Erro /api/ocorrencias_abertas")
-        return jsonify({"error": str(e)}), 500
+            ocorrencia = {
+                "id": item.get('numero'),
+                "status": item.get('status'),
+                "data_hora": formatar_data_hora(item.get('data_hora')),
+                "aluno_nome": item.get('aluno_nome', 'N/A'),
+                "tutor_nome": item.get('tutor_nome', 'N/A'),
+                "professor_nome": item.get('professor_id', {}).get('nome', 'N/A'),
+                "sala_nome": item.get('sala_id', {}).get('sala', 'N/A'),
 
-@app.route('/api/alunos', methods=['GET'])
-def api_alunos():
-    """
-    Retorna alunos. Opcionalmente filtra por sala:
-      /api/alunos?sala=<sala_id>&finalizadas=true
-    Quando finalizadas=true, retornamos apenas alunos que possuem ocorrências finalizadas
-    (e pertencem à sala filtrada, se passada).
-    """
-    try:
-        sala = request.args.get('sala')
-        apenas_com_finalizadas = request.args.get('finalizadas', 'false').lower() in ('1','true','sim','y','yes')
+                # Flags de solicitação
+                "solicitado_tutor": item.get('solicitado_tutor', False),
+                "solicitado_coordenacao": item.get('solicitado_coordenacao', False),
+                "solicitado_gestao": item.get('solicitado_gestao', False),
 
-        if not apenas_com_finalizadas:
-            # retorno simples de alunos (ajuste tabela/coluna se necessário)
-            q = supabase.table('d_alunos').select('id,aluno_nome')
-            if sala:
-                q = q.eq('sala_id', sala)
-            resp = q.order('aluno_nome', asc=True).execute()
-            return jsonify(resp.data or []), 200
+                # Campos de atendimento (para renderizar corretamente os botões T/C/G)
+                "atendimento_tutor": item.get('atendimento_tutor', ''),
+                "atendimento_coordenacao": item.get('atendimento_coordenacao', ''),
+                "atendimento_gestao": item.get('atendimento_gestao', ''),
+            }
 
-        # Quando queremos apenas alunos com ocorrências finalizadas:
-        # buscamos ocorrencias finalizadas, opcionalmente filtrando por sala, e coletamos aluno_id
-        q = supabase.table('ocorrencias').select('aluno_id').eq('status', 'Finalizada')
-        if sala:
-            q = q.eq('sala_id', sala)
-        resp = q.execute()
-        aluno_ids = []
-        if resp and resp.data:
-            for r in resp.data:
-                aid = r.get('aluno_id')
-                if isinstance(aid, dict):
-                    val = aid.get('id')
-                else:
-                    val = aid
-                if val and val not in aluno_ids:
-                    aluno_ids.append(val)
+            ocorrencias.append(ocorrencia)
 
-        if not aluno_ids:
-            return jsonify([]), 200
-
-        resp2 = supabase.table('d_alunos').select('id,aluno_nome').in_('id', aluno_ids).order('aluno_nome', asc=True).execute()
-        return jsonify(resp2.data or []), 200
+        return jsonify(ocorrencias), 200
 
     except Exception as e:
-        logging.exception("Erro /api/alunos")
-        return jsonify({"error": str(e)}), 500
+        logging.error(f"Erro CRÍTICO ao buscar ocorrências abertas: {e}")
+        return jsonify({
+            "error": f"Erro interno ao carregar a lista: {e}",
+            "status": 500
+        }), 500
+
 
 # ============================================================
 # 🔹 API: Buscar detalhes de uma ocorrência específica por ID
@@ -690,62 +609,43 @@ from flask import jsonify
 
 # Em app.py
 
-@app.route('/api/ocorrencias_finalizadas', methods=['GET'])
-def api_ocorrencias_finalizadas():
-    """
-    Retorna ocorrências com status Finalizada.
-    Aceita filtros combinados via query params:
-      ?sala=<sala_id>&aluno=<aluno_id>
-    """
+@app.route('/api/ocorrencias_finalizadas')
+def get_ocorrencias_finalizadas():
     try:
-        sala = request.args.get('sala')
-        aluno = request.args.get('aluno')
+        # A query no Supabase continua a mesma, buscando os dados necessários
+        response = supabase.table('ocorrencias').select(
+            '*, professor_id(nome), sala_id(sala), tutor_id(nome)' # Garanta que os nomes de tabelas relacionadas estão corretos
+        ).order('data_hora', desc=True).execute()
 
-        select = """
-            numero,
-            data_hora,
-            status,
-            aluno_nome,
-            tutor_nome,
-            sala_id(sala),
-            solicitado_tutor,
-            solicitado_coordenacao,
-            solicitado_gestao,
-            atendimento_tutor,
-            atendimento_coordenacao,
-            atendimento_gestao
-        """
-        q = supabase.table('ocorrencias').select(select).eq('status', 'Finalizada').order('data_hora', desc=True)
+        if not response.data:
+            return jsonify([])
 
-        if sala:
-            # sala pode chegar como string; filtramos por equality no campo sala_id
-            q = q.eq('sala_id', sala)
-        if aluno:
-            q = q.eq('aluno_id', aluno)
+        ocorrencias_finalizadas = []
+        for o in response.data:
+            # Ponto crucial: Se não houver data de atendimento do professor, a ocorrência não está finalizada.
+            if not o.get('dt_atendimento_professor'):
+                continue
 
-        resp = q.execute()
-        items = resp.data or []
-        out = []
-        for it in items:
-            out.append({
-                "numero": it.get('numero'),
-                "data_hora": formatar_data_hora(it.get('data_hora')),
-                "status": it.get('status'),
-                "aluno_nome": it.get('aluno_nome'),
-                "tutor_nome": it.get('tutor_nome'),
-                "sala_nome": (it.get('sala_id') or {}).get('sala', ''),
-                "solicitado_tutor": it.get('solicitado_tutor', False),
-                "solicitado_coordenacao": it.get('solicitado_coordenacao', False),
-                "solicitado_gestao": it.get('solicitado_gestao', False),
-                "atendimento_tutor": it.get('atendimento_tutor') or '',
-                "atendimento_coordenacao": it.get('atendimento_coordenacao') or '',
-                "atendimento_gestao": it.get('atendimento_gestao') or '',
-            })
-        return jsonify(out), 200
+            # Verifica cada nível solicitado. Se não foi solicitado, considera-se atendido (True).
+            tutor_atendido = not o.get('solicitado_tutor') or o.get('dt_atendimento_tutor')
+            coord_atendido = not o.get('solicitado_coordenacao') or o.get('dt_atendimento_coordenacao')
+            gestao_atendido = not o.get('solicitado_gestao') or o.get('dt_atendimento_gestao')
+
+            # Se todos os níveis (incluindo os não solicitados) estiverem "OK", a ocorrência é finalizada.
+            if tutor_atendido and coord_atendido and gestao_atendido:
+                # CORREÇÃO PARA FRONTEND: Adiciona os nomes em campos fáceis de acessar
+                if o.get('sala_id') and isinstance(o.get('sala_id'), dict):
+                    o['sala_nome'] = o['sala_id'].get('sala')
+                if o.get('tutor_id') and isinstance(o.get('tutor_id'), dict):
+                    o['tutor_nome'] = o['tutor_id'].get('nome')
+                
+                ocorrencias_finalizadas.append(o)
+        
+        return jsonify(ocorrencias_finalizadas)
+
     except Exception as e:
-        logging.exception("Erro /api/ocorrencias_finalizadas")
+        print(f"Erro em /api/ocorrencias_finalizadas: {e}") # Ajuda a depurar
         return jsonify({"error": str(e)}), 500
-
         
 # ROTA 12.1: API GET: Horários Fixos por Nível (NOVO - Módulo Aulas)
 @app.route('/api/horarios_fixos/<nivel_ensino>', methods=['GET'])
@@ -820,56 +720,60 @@ def api_get_guia_aprendizagem():
 # ROTAS DA API (POST - CADASTROS E TRANSAÇÕES)
 # =================================================================
 
-@app.route('/api/registrar_atendimento', methods=['POST'])
-def registrar_atendimento():
+@app.route("/api/registrar_atendimento/<int:ocorrencia_id>", methods=["POST"])
+def registrar_atendimento(ocorrencia_id):
     """
-    Recebe JSON: { "numero": <numero>, "nivel": "tutor|coordenacao|gestao", "texto": "..." }
-    Atualiza campo atendimento_* e dt_atendimento_*; se todos atendidos, marca Finalizada.
+    Atualiza o texto e data do atendimento (tutor, coordenação ou gestão).
+    Se todos os três atendimentos estiverem registrados, marca como FINALIZADA.
     """
     try:
-        payload = request.get_json(force=True)
-        numero = payload.get('numero')
-        nivel = payload.get('nivel')
-        texto = (payload.get('texto') or "").strip()
+        data = request.get_json()
+        nivel = data.get("nivel")
+        texto = data.get("texto_atendimento")
 
-        if not numero or not nivel:
-            return jsonify({"error":"numero e nivel são obrigatórios"}), 400
+        if not nivel or not texto:
+            return jsonify({"error": "Dados incompletos"}), 400
 
         campos = {
             "tutor": ("atendimento_tutor", "dt_atendimento_tutor"),
             "coordenacao": ("atendimento_coordenacao", "dt_atendimento_coordenacao"),
-            "gestao": ("atendimento_gestao", "dt_atendimento_gestao")
+            "gestao": ("atendimento_gestao", "dt_atendimento_gestao"),
         }
+
         if nivel not in campos:
-            return jsonify({"error":"nivel inválido"}), 400
+            return jsonify({"error": "Nível inválido"}), 400
 
         campo_texto, campo_data = campos[nivel]
         agora = datetime.now().isoformat()
-        sup_resp = supabase.table('ocorrencias').update({
+
+        # Atualiza o atendimento do nível correspondente
+        supabase.table("ocorrencias").update({
             campo_texto: texto,
             campo_data: agora
-        }).eq('numero', numero).execute()
+        }).eq("numero", ocorrencia_id).execute()
 
-        # reconsulta para verificar todos os atendimentos
-        check = supabase.table('ocorrencias').select(
-            "solicitado_tutor, solicitado_coordenacao, solicitado_gestao, atendimento_tutor, atendimento_coordenacao, atendimento_gestao"
-        ).eq('numero', numero).single().execute()
+        # Busca os atendimentos atuais
+        result = supabase.table("ocorrencias").select(
+            "dt_atendimento_tutor, dt_atendimento_coordenacao, dt_atendimento_gestao"
+        ).eq("numero", ocorrencia_id).single().execute()
 
-        if not check or not check.data:
-            return jsonify({"error":"Ocorrência não encontrada"}), 404
+        if not result or not result.data:
+            return jsonify({"error": "Ocorrência não encontrada"}), 404
 
-        occ = check.data
-        tutor_ok = (not occ.get('solicitado_tutor')) or bool((occ.get('atendimento_tutor') or '').strip())
-        coord_ok = (not occ.get('solicitado_coordenacao')) or bool((occ.get('atendimento_coordenacao') or '').strip())
-        gestao_ok = (not occ.get('solicitado_gestao')) or bool((occ.get('atendimento_gestao') or '').strip())
+        occ = result.data
 
-        if tutor_ok and coord_ok and gestao_ok:
-            supabase.table('ocorrencias').update({"status": "Finalizada"}).eq('numero', numero).execute()
+        # Se todos os atendimentos foram realizados, finaliza a ocorrência
+        if all([
+            occ.get("dt_atendimento_tutor"),
+            occ.get("dt_atendimento_coordenacao"),
+            occ.get("dt_atendimento_gestao")
+        ]):
+            supabase.table("ocorrencias").update({"status": "FINALIZADA"}).eq("numero", ocorrencia_id).execute()
 
-        return jsonify({"success": True, "message": "Atendimento registrado"}), 200
+        return jsonify({"success": True})
 
     except Exception as e:
-        logging.exception("Erro /api/registrar_atendimento")
+        print("Erro registrar_atendimento:", e)
         return jsonify({"error": str(e)}), 500
         
 # ROTA 13: API POST: Cadastro de Sala
@@ -1586,10 +1490,6 @@ def api_delete_ocorrencia(ocorrencia_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
-
-
-
-
 
 
 
