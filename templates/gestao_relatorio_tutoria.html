@@ -34,11 +34,10 @@
             document.getElementById('filter-tutor').addEventListener('change', loadAlunos);
         });
 
-        // Helper para lidar com erros de fetch
         async function handleFetchResponse(url, context) {
             const response = await fetch(url);
             if (!response.ok) {
-                mostrarMensagem(`Erro ao buscar ${context}. Falha na API.`, 'danger');
+                mostrarMensagem(`Erro ao buscar ${context}.`, 'danger');
                 throw new Error(`Falha no fetch de ${context}`);
             }
             return response.json();
@@ -48,14 +47,13 @@
              const msgElement = document.getElementById('mensagem-status');
              msgElement.textContent = texto;
              msgElement.classList.remove('hidden', 'bg-success', 'bg-danger', 'bg-warning', 'bg-info');
-             
              const classMap = { 'success': 'bg-accent', 'danger': 'bg-danger', 'warning': 'bg-yellow-500', 'info': 'bg-info' };
              msgElement.classList.add(classMap[tipo] || 'bg-gray-600');
              msgElement.classList.remove('hidden');
              setTimeout(() => { msgElement.classList.add('hidden'); }, 5000);
         }
 
-        // 1. Carrega o filtro de Tutores
+        // Carrega os tutores
         window.loadTutores = async function() {
             const selectTutor = document.getElementById('filter-tutor');
             selectTutor.innerHTML = '<option value="">Carregando Tutores...</option>';
@@ -66,31 +64,27 @@
                 tutoresData.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(t => { 
                     selectTutor.innerHTML += `<option value="${t.id}">${t.nome}</option>`; 
                 });
-                
             } catch (e) { 
                 selectTutor.innerHTML = '<option value="">ERRO AO CARREGAR TUTORES</option>';
             }
         }
 
-        // 2. Carrega o filtro de Alunos (Cascata)
+        // Carrega os alunos do tutor
         window.loadAlunos = async function() {
             const tutorId = document.getElementById('filter-tutor').value;
             const selectAluno = document.getElementById('filter-aluno');
-            
             selectAluno.innerHTML = '<option value="">Selecione o Tutor...</option>';
             selectAluno.disabled = true;
 
             if (tutorId) {
                 try {
-                    // Endpoint /api/alunos_por_tutor/ precisa ser criado no Flask
                     alunosData = await handleFetchResponse(`/api/alunos_por_tutor/${tutorId}`, 'Alunos');
-
                     selectAluno.innerHTML = '<option value="">SELECIONE O ALUNO *</option>';
                     alunosData.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(aluno => {
                         selectAluno.innerHTML += `<option value="${aluno.id}">${aluno.nome}</option>`;
                     });
                     selectAluno.disabled = false;
-                } catch (error) { 
+                } catch {
                     selectAluno.innerHTML = '<option value="">ERRO AO CARREGAR ALUNOS</option>';
                 }
             } else {
@@ -98,7 +92,7 @@
             }
         }
         
-        // 3. LÓGICA DO RELATÓRIO
+        // Gera o relatório
         window.gerarRelatorio = function() {
             const tutorId = document.getElementById('filter-tutor').value;
             const alunoId = document.getElementById('filter-aluno').value;
@@ -110,49 +104,70 @@
             
             mostrarMensagem('Gerando Relatório de Tutoria...', 'info');
 
-            // SIMULAÇÃO: Aqui você faria a chamada FETCH para o Flask:
-            // Rota GET /api/relatorio_tutoria?aluno=X&tutor=Y
-            
-            // Simulação de 1.5s para carregamento
             setTimeout(() => {
                 const tutorNome = tutoresData.find(t => t.id === tutorId)?.nome || 'Tutor Desconhecido';
                 const alunoNome = alunosData.find(a => a.id === alunoId)?.nome || 'Aluno Desconhecido';
                 
                 const resultado = `
-                    <h4 class="text-xl font-bold mb-3 text-info">Relatório Gerado com Sucesso!</h4>
-                    <p><strong>Aluno:</strong> ${alunoNome}</p>
-                    <p><strong>Tutor:</strong> ${tutorNome}</p>
-                    <div class="mt-4 p-3 bg-dark-primary rounded-lg">
-                        <p class="font-semibold text-accent">Resumo da Tutoria:</p>
-                        <ul>
-                            <li>Último Atendimento: 2025-10-05</li>
-                            <li>Ocorrências Registradas: 3</li>
-                            <li>Notas Médias (B1): 7.5</li>
-                            <li>Plano de Ação: Em Andamento</li>
-                        </ul>
+                    <div class="print-content text-left">
+                        <h4 class="text-xl font-bold mb-3 text-info">Relatório de Tutoria Individual</h4>
+                        <p><strong>Aluno:</strong> ${alunoNome}</p>
+                        <p><strong>Tutor:</strong> ${tutorNome}</p>
+                        <div class="mt-4 p-3 bg-dark-primary rounded-lg border border-gray-700">
+                            <p class="font-semibold text-accent">Resumo da Tutoria:</p>
+                            <ul class="list-disc list-inside mt-2">
+                                <li>Último Atendimento: 2025-10-05</li>
+                                <li>Ocorrências Registradas: 3</li>
+                                <li>Notas Médias (B1): 7.5</li>
+                                <li>Plano de Ação: Em Andamento</li>
+                            </ul>
+                        </div>
                     </div>
                 `;
                 
                 document.getElementById('report-output').innerHTML = resultado;
                 document.getElementById('print-button-container').classList.remove('hidden');
                 relatorioGerado = true;
-                mostrarMensagem('Relatório pronto para visualização e impressão.', 'success');
-            }, 1500);
+                mostrarMensagem('Relatório pronto para impressão.', 'success');
+            }, 1000);
         }
 
-        // 4. LÓGICA DE IMPRESSÃO
+        // Impressão real
         window.imprimirRelatorio = function() {
             if (!relatorioGerado) {
                 mostrarMensagem('Erro: Gere o relatório antes de imprimir.', 'danger');
                 return;
             }
-            alert('Simulando impressão do relatório de Tutoria. (Implementação de PDF/Impressão real deve ser feita pelo backend).');
-            // window.print(); // Descomente para usar a função de impressão nativa do navegador
+            window.print();
         }
     </script>
+
     <style>
-         .form-input {
-            @apply w-full p-3 bg-white border border-gray-700 rounded-lg text-black focus:ring-info focus:border-info;
+        /* Inputs combinando com o tema escuro */
+        .form-input {
+            @apply w-full p-3 bg-dark-primary border border-gray-700 rounded-lg text-text-light focus:ring-info focus:border-info;
+        }
+
+        /* Ajustes para impressão */
+        @media print {
+            body {
+                background: #ffffff !important;
+                color: #000000 !important;
+            }
+            .bg-dark-primary, .bg-dark-secondary {
+                background: #ffffff !important;
+            }
+            .text-info, .text-accent {
+                color: #000000 !important;
+            }
+            button, header, footer, #mensagem-status {
+                display: none !important;
+            }
+            #report-output {
+                border: none !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+            }
         }
     </style>
 </head>
@@ -170,7 +185,7 @@
             <div class="mt-4">
                  <button type="button" onclick="window.location.href='/gestao_relatorio'"
                         class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200 ease-in-out flex items-center justify-center space-x-2 mx-auto w-full max-w-xs">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z"></path></svg>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z"></path></svg>
                     <span>VOLTAR PARA O MENU RELATÓRIOS</span>
                 </button>
             </div>
