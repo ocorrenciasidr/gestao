@@ -1,369 +1,172 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestão de Ocorrências Finalizadas</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        'dark-primary': '#0F172A',
-                        'dark-secondary': '#1E293B',
-                        'accent': '#10B981',
-                        'text-light': '#F8FAFC',
-                        'input-bg': '#374151',
-                        'danger': '#DC2626',
-                        'success': '#10B981',
-                        'warning': '#F59E0B',
-                    },
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                    },
-                }
-            }
-        }
-    </script>
-    <style>
-        .form-input {
-            width: 100%;
-            padding: 0.75rem;
-            border-radius: 0.5rem;
-            background-color: #374151;
-            color: #f3f4f6;
-            border: 1px solid #4b5563;
-        }
-    </style>
-    <script>
-        let finalizadasOcorrencias = [];
-        let idOcorrenciaParaExcluir = null;
-        const GESTAO_SENHA_MOCK = 'idrgestao';
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Ocorrências Finalizadas</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = { theme: { extend: { colors: { 'dark-primary':'#0F172A','dark-secondary':'#1E293B','accent':'#10B981','text-light':'#F8FAFC','tutor-color':'#007ACC','coord-color':'#F59E0B','gestao-color':'#EF4444' }}}};
 
-        document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('filter-sala').addEventListener('change', preencherFiltroAluno);
-            document.getElementById('filter-aluno').addEventListener('change', aplicarFiltros);
-            loadOcorrencias();
-        });
-
-        // =======================================================
-        // FUNÇÕES AUXILIARES E DE DADOS
-        // =======================================================
-        function mostrarMensagem(texto, tipo) {
-            const msgElement = document.getElementById('mensagem-status');
-            msgElement.textContent = texto;
-            msgElement.classList.remove('hidden', 'bg-success', 'bg-danger', 'bg-warning', 'bg-accent');
-            if (tipo === 'success') msgElement.classList.add('bg-accent');
-            else if (tipo === 'danger') msgElement.classList.add('bg-danger');
-            else if (tipo === 'warning') msgElement.classList.add('bg-warning');
-            msgElement.classList.remove('hidden');
-            setTimeout(() => msgElement.classList.add('hidden'), 5000);
-        }
-
-        async function handleFetchResponse(url) {
-            try {
-                const response = await fetch(url);
-                if (!response.ok) {
-                    const errorDetails = await response.text();
-                    throw new Error(`A API respondeu com erro!\n\nStatus: ${response.status} (${response.statusText})\nURL: ${url}\n\nDetalhes: O servidor pode ter retornado uma página de erro/login em vez de dados JSON.`);
-                }
-                const text = await response.text();
-                try {
-                    return JSON.parse(text);
-                } catch (e) {
-                    throw new Error(`A API não retornou um JSON válido, mesmo com status OK.\nResposta recebida:\n${text.substring(0, 150)}...`);
-                }
-            } catch (networkError) {
-                throw new Error(`Erro de Conexão de Rede.\n\nVerifique se o servidor está rodando e a URL está correta.\nDetalhes: ${networkError.message}`);
-            }
-        }
-
-        async function loadOcorrencias() {
-            mostrarMensagem('Carregando histórico do servidor...', 'warning');
-            const tbody = document.getElementById('tabela-ocorrencias');
-            try {
-                finalizadasOcorrencias = await handleFetchResponse('/api/ocorrencias_finalizadas');
-                preencherFiltrosEstaticos(finalizadasOcorrencias);
-                aplicarFiltros();
-                mostrarMensagem('Histórico carregado.', 'success');
-            } catch (error) {
-                console.error("Erro ao carregar histórico:", error);
-                mostrarMensagem('Erro CRÍTICO ao carregar a lista!', 'danger');
-                tbody.innerHTML = `<tr><td colspan="10" class="text-center py-6 text-danger whitespace-pre-wrap">${error.message}</td></tr>`;
-            }
-        }
-
-        function formatarData(dataString) {
-            if (!dataString) return 'N/A';
-            try {
-                const date = new Date(dataString);
-                if (isNaN(date.getTime())) return 'N/A';
-                return date.toLocaleDateString('pt-BR');
-            } catch { return dataString; }
-        }
-
-        function exibirDataOuTraco(dataAtendimento, isSolicitado) {
-            if (!isSolicitado) return '<span class="text-gray-500">---</span>';
-            return dataAtendimento ? formatarData(dataAtendimento) : '<span class="text-accent">OK</span>';
-        }
-        
-        // =======================================================
-        // FUNÇÕES DE FILTRO E RENDERIZAÇÃO
-        // =======================================================
-        function preencherFiltrosEstaticos(ocorrencias) {
-    const filterSalaSelect = document.getElementById('filter-sala');
-    filterSalaSelect.innerHTML = '<option value="">TODAS AS SALAS</option>';
-    
-    // O campo 'sala_nome' agora é adicionado pelo backend, tornando este código mais simples e seguro.
-    const salas = [...new Set(ocorrencias.map(o => o.sala_nome).filter(Boolean))].sort();
-    
-    salas.forEach(sala => {
-        filterSalaSelect.insertAdjacentHTML('beforeend', `<option value="${sala}">${sala}</option>`);
+  document.addEventListener('DOMContentLoaded', () => {
+    carregarFiltros();
+    carregarOcorrencias();
+    document.getElementById('filtro-sala').addEventListener('change', carregarOcorrencias);
+    document.getElementById('filtro-aluno').addEventListener('change', carregarOcorrencias);
+    document.getElementById('btn-limpar-filtros').addEventListener('click', () => {
+      document.getElementById('filtro-sala').value = '';
+      document.getElementById('filtro-aluno').value = '';
+      carregarOcorrencias();
     });
-}
+  });
 
-        function preencherFiltroAluno() {
-    const filterSala = document.getElementById('filter-sala').value;
-    const filterAlunoSelect = document.getElementById('filter-aluno');
-    filterAlunoSelect.innerHTML = '<option value="">TODOS OS ALUNOS</option>';
-    
-    const ocorrenciasFiltradas = filterSala 
-        ? finalizadasOcorrencias.filter(o => o.sala_nome === filterSala) 
-        : finalizadasOcorrencias;
-        
-    const alunos = [...new Set(ocorrenciasFiltradas.map(o => o.aluno_nome).filter(Boolean))].sort();
-    
-    alunos.forEach(aluno => {
-        filterAlunoSelect.insertAdjacentHTML('beforeend', `<option value="${aluno}">${aluno}</option>`);
-    });
+  function mostrarMensagem(texto, tipo = 'info') {
+    const el = document.getElementById('mensagem-status');
+    el.textContent = texto;
+    el.className = 'fixed top-4 right-4 p-3 rounded z-50 text-text-light';
+    if (tipo === 'success') el.style.background = '#10B981';
+    else if (tipo === 'danger') el.style.background = '#DC2626';
+    else el.style.background = '#1E293B';
+    setTimeout(()=> el.textContent = '', 3000);
+  }
 
-    // É importante chamar a aplicação dos filtros aqui para atualizar a tabela
-    aplicarFiltros(); 
-}
-        
-        window.preencherFiltroAluno = function() {
-            const filterSala = document.getElementById('filter-sala').value;
-            const filterAlunoSelect = document.getElementById('filter-aluno');
-            const selectedAluno = filterAlunoSelect.value;
-            filterAlunoSelect.innerHTML = '<option value="">TODOS OS ALUNOS</option>';
-            const ocorrenciasFiltradas = filterSala ? finalizadasOcorrencias.filter(o => o.sala_nome === filterSala) : finalizadasOcorrencias;
-            const alunos = [...new Set(ocorrenciasFiltradas.map(o => o.aluno_nome).filter(Boolean))].sort();
-            alunos.forEach(aluno => filterAlunoSelect.insertAdjacentHTML('beforeend', `<option value="${aluno}">${aluno}</option>`));
-            if (selectedAluno) filterAlunoSelect.value = selectedAluno;
-            aplicarFiltros();
-        }
+  // Preenche os selects Sala e Aluno (APIs simples: /api/salas, /api/alunos?sala=)
+  async function carregarFiltros() {
+    try {
+      const [rS, rA] = await Promise.all([fetch('/api/salas'), fetch('/api/alunos')]);
+      const salas = rS.ok ? await rS.json() : [];
+      const alunos = rA.ok ? await rA.json() : [];
 
-        window.aplicarFiltros = function() {
-            const filterSala = document.getElementById('filter-sala').value;
-            const filterAluno = document.getElementById('filter-aluno').value;
-            let filteredOcorrencias = finalizadasOcorrencias;
-            if (filterSala) filteredOcorrencias = filteredOcorrencias.filter(o => o.sala_nome === filterSala);
-            if (filterAluno) filteredOcorrencias = filteredOcorrencias.filter(o => o.aluno_nome === filterAluno);
-            renderizarTabela(filteredOcorrencias);
-        }
+      const selSala = document.getElementById('filtro-sala');
+      selSala.innerHTML = '<option value="">-- Todas as salas --</option>';
+      salas.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s.id ?? s.sala ?? s.sala_id ?? s.sala_nome;
+        opt.text = s.sala ?? s.sala_nome ?? String(s.id);
+        selSala.appendChild(opt);
+      });
 
-       function renderizarTabela(ocorrencias) {
-    const tbody = document.getElementById('tabela-ocorrencias');
-    if (!tbody) return;
+      const selAluno = document.getElementById('filtro-aluno');
+      selAluno.innerHTML = '<option value="">-- Todos os alunos --</option>';
+      alunos.forEach(a => {
+        const opt = document.createElement('option');
+        opt.value = a.id ?? a.aluno_id ?? a.aluno_num ?? a.aluno_nome;
+        opt.text = a.aluno_nome ?? a.nome ?? String(opt.value);
+        selAluno.appendChild(opt);
+      });
 
-    // CORREÇÃO: Colspan ajustado de 10 para 9
-    if (ocorrencias.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="9" class="text-center py-6 text-gray-400">Nenhuma ocorrência finalizada encontrada.</td></tr>`;
-        return;
+    } catch (e) {
+      console.error('Erro filtros:', e);
+      mostrarMensagem('Falha ao carregar filtros', 'danger');
     }
+  }
 
-    let html = '';
-    ocorrencias.forEach(o => {
-        // CORREÇÃO: Usando 'numero' como o identificador principal
-        const numeroOcorrencia = o.numero;
+  // Renderiza T/C/G seguindo a regra: aparece se solicitado_* == true AND atendimento_* vazio
+  function renderizarAcoes(occ) {
+    const numero = occ.numero;
+    let html = `<div class="flex items-center space-x-2">
+      <a href="/gestao_ocorrencia_editar?id=${numero}&modo=visualizar" title="Visualizar" class="text-gray-400 hover:text-accent">
+        <!-- lupa -->
+        <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+      </a>`;
 
-        html += `<tr class="hover:bg-dark-primary transition duration-150" data-id="${numeroOcorrencia}">
-            <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-sm font-medium">${numeroOcorrencia}</td>
-            <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-sm">${formatarData(o.data_hora || o.data_registro)}</td>
-            <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-sm">${o.aluno_nome}</td>
-            <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm">${o.sala_nome}</td>
-            
-            <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm">${exibirDataOuTraco(o.dt_atendimento_tutor, o.solicitado_tutor)}</td>
-            <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm">${exibirDataOuTraco(o.dt_atendimento_coordenacao, o.solicitado_coordenacao)}</td>
-            <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm">${exibirDataOuTraco(o.dt_atendimento_gestao, o.solicitado_gestao)}</td>
-            <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm">
-                <span class="px-3 py-1 text-xs font-semibold rounded-full bg-success/50 text-accent">FINALIZADA</span>
-            </td>
-            <td class="px-4 py-2 border-b border-gray-700 whitespace-nowrap text-center text-sm font-medium">
-                <a href="/gestao_ocorrencia_editar?id=${numeroOcorrencia}&modo=visualizar" title="Visualização Completa" class="text-blue-400 hover:text-blue-300 transition duration-150 inline-block p-1">
-                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                </a>
-                <a href="#" onclick="abrirModalSenhaEdicao('${numeroOcorrencia}')" title="Edição Completa (Acesso Gestão)" class="text-warning hover:text-yellow-400 transition duration-150 inline-block p-1 ml-2">
-                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                </a>
-                
-                </td>
+    // conversões seguras
+    const st = occ.solicitado_tutor === true || occ.solicitado_tutor === 'true' || occ.solicitado_tutor === 1;
+    const sc = occ.solicitado_coordenacao === true || occ.solicitado_coordenacao === 'true' || occ.solicitado_coordenacao === 1;
+    const sg = occ.solicitado_gestao === true || occ.solicitado_gestao === 'true' || occ.solicitado_gestao === 1;
+
+    const at = (occ.atendimento_tutor || '').toString().trim();
+    const ac = (occ.atendimento_coordenacao || '').toString().trim();
+    const ag = (occ.atendimento_gestao || '').toString().trim();
+
+    if (st && at === '') html += `<a href="/gestao_ocorrencia_editar?id=${numero}&modo=atendimento&nivel=tutor" class="text-xs font-bold px-2 py-0.5 rounded-full border border-tutor-color bg-tutor-color/10 text-tutor-color">T</a>`;
+    if (sc && ac === '') html += `<a href="/gestao_ocorrencia_editar?id=${numero}&modo=atendimento&nivel=coordenacao" class="text-xs font-bold px-2 py-0.5 rounded-full border border-coord-color bg-coord-color/10 text-coord-color">C</a>`;
+    if (sg && ag === '') html += `<a href="/gestao_ocorrencia_editar?id=${numero}&modo=atendimento&nivel=gestao" class="text-xs font-bold px-2 py-0.5 rounded-full border border-gestao-color bg-gestao-color/10 text-gestao-color">G</a>`;
+
+    html += '</div>';
+    return html;
+  }
+
+  // Carregar tabela finalizadas com filtros opcionais
+  async function carregarOcorrencias() {
+    mostrarMensagem('Carregando...', 'info');
+    const tabela = document.getElementById('ocorrencias-corpo');
+    tabela.innerHTML = '<tr><td colspan="6" class="py-6 text-center text-gray-400">Carregando...</td></tr>';
+
+    const sala = encodeURIComponent(document.getElementById('filtro-sala').value || '');
+    const aluno = encodeURIComponent(document.getElementById('filtro-aluno').value || '');
+    let url = '/api/ocorrencias_finalizadas';
+    const params = [];
+    if (sala) params.push(`sala=${sala}`);
+    if (aluno) params.push(`aluno=${aluno}`);
+    if (params.length) url += '?' + params.join('&');
+
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error('Falha ao buscar finalizadas');
+      const data = await resp.json();
+      if (!Array.isArray(data) || data.length === 0) {
+        tabela.innerHTML = '<tr><td colspan="6" class="py-6 text-center text-gray-400">Nenhuma ocorrência finalizada.</td></tr>';
+        return;
+      }
+      let html = '';
+      data.forEach(occ => {
+        html += `<tr class="hover:bg-dark-secondary/50">
+          <td class="p-3 text-sm font-medium text-text-light">${occ.numero}</td>
+          <td class="p-3 text-sm text-gray-300">${occ.aluno_nome || ''}</td>
+          <td class="p-3 text-sm text-gray-300">${occ.sala_nome || ''}</td>
+          <td class="p-3 text-sm text-gray-300">${occ.tutor_nome || ''}</td>
+          <td class="p-3 text-sm text-gray-300">${occ.status || ''}</td>
+          <td class="p-3 text-sm whitespace-nowrap">${renderizarAcoes(occ)}</td>
         </tr>`;
-    });
-    tbody.innerHTML = html;
-}
-            tbody.innerHTML = html;
-        }
-
-        // =======================================================
-        // LÓGICA DE MODAL E AÇÕES
-        // =======================================================
-        function abrirModalSenhaEdicao(ocorrenciaId) {
-            const modal = document.getElementById('modal-overlay');
-            const inputSenha = document.getElementById('input-senha');
-            inputSenha.setAttribute('data-id', ocorrenciaId);
-            document.getElementById('modal-titulo').textContent = 'Edição Completa (Acesso Gestão)';
-            document.getElementById('modal-texto').textContent = `Para editar a Ocorrência ${ocorrenciaId}, insira a senha de gestão:`;
-            modal.classList.remove('hidden');
-            inputSenha.focus();
-        }
-
-        function validarSenha(event) {
-            event.preventDefault();
-            const inputSenha = document.getElementById('input-senha');
-            const id = inputSenha.getAttribute('data-id');
-            if (inputSenha.value === GESTAO_SENHA_MOCK) {
-                window.location.href = `/gestao_ocorrencia_editar?id=${id}&modo=editar`;
-            } else {
-                mostrarMensagem('Senha incorreta.', 'danger');
-            }
-            inputSenha.value = '';
-            document.getElementById('modal-overlay').classList.add('hidden');
-        }
-
-        function confirmarExclusao(id) {
-            idOcorrenciaParaExcluir = id;
-            document.getElementById('modal-exclusao-overlay').classList.remove('hidden');
-        }
-
-        async function excluirOcorrencia() {
-            document.getElementById('modal-exclusao-overlay').classList.add('hidden');
-            if (!idOcorrenciaParaExcluir) return;
-            try {
-                const response = await fetch(`/api/ocorrencias/${idOcorrenciaParaExcluir}`, { method: 'DELETE' });
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.error || 'Falha ao excluir.');
-                mostrarMensagem(result.message, 'success');
-                loadOcorrencias();
-            } catch (error) {
-                mostrarMensagem(`Erro ao excluir: ${error.message}`, 'danger');
-            } finally {
-                idOcorrenciaParaExcluir = null;
-            }
-        }
-    </script>
+      });
+      tabela.innerHTML = html;
+      mostrarMensagem('Finalizadas carregadas', 'success');
+    } catch (e) {
+      console.error(e);
+      tabela.innerHTML = '<tr><td colspan="6" class="py-6 text-center text-red-400">Erro ao carregar.</td></tr>';
+      mostrarMensagem('Erro ao carregar finalizadas', 'danger');
+    }
+  }
+</script>
 </head>
-<body class="bg-dark-primary font-sans text-text-light">
-    
-    <div id="app-container" class="flex flex-col items-center justify-between p-4 md:p-8 min-h-screen">
 
-        <header class="w-full text-center mb-8 mt-4">
-            <h1 class="text-3xl sm:text-4xl font-extrabold text-accent leading-tight tracking-wider">
-                SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR
-            </h1>
-            <h2 class="text-xl sm:text-2xl text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
-                Gestão de Ocorrências - Ocorrências Finalizadas
-            </h2>
-            <div class="mt-4">
-                 <button type="button" onclick="window.location.href='/gestao_ocorrencia'"
-                         class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200 ease-in-out flex items-center justify-center space-x-2 mx-auto w-full max-w-xs md:max-w-md">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z"></path></svg>
-                    <span>Voltar para Gestão de Ocorrência</span>
-                </button>
-            </div>
-        </header>
+<body class="bg-dark-primary min-h-screen p-6 text-text-light">
+  <div id="mensagem-status" class="hidden fixed top-4 right-4 p-3 rounded z-50 text-text-light"></div>
 
-        <div id="mensagem-status" class="hidden p-3 mb-4 text-sm font-medium text-white rounded-lg text-center w-full max-w-4xl" role="alert"></div>
+  <div class="max-w-7xl mx-auto">
+    <header class="mb-6">
+      <h1 class="text-3xl font-bold text-accent">SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR</h1>
+      <div class="mt-3 flex gap-3">
+        <button onclick="window.location.href='/gestao_ocorrencia'" class="px-4 py-2 bg-gray-600 rounded">Voltar</button>
+        <button onclick="window.location.href='/gestao_ocorrencia_abertas'" class="px-4 py-2 bg-emerald-700 rounded">Abertas</button>
+        <button onclick="window.location.href='/gestao_ocorrencia_nova'" class="px-4 py-2 bg-accent rounded">Nova Ocorrência</button>
 
-        <main class="w-full max-w-7xl flex-grow">
-            
-            <div class="filter-area bg-dark-secondary p-4 rounded-xl shadow-lg mb-4">
-                <h3 class="text-lg font-bold mb-3 text-accent">Filtros de Histórico</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label for="filter-sala" class="block text-sm font-medium mb-1">Sala:</label>
-                        <select id="filter-sala" class="form-input">
-                            <option value="">TODAS AS SALAS</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label for="filter-aluno" class="block text-sm font-medium mb-1">Aluno:</label>
-                        <select id="filter-aluno" class="form-input">
-                            <option value="">TODOS OS ALUNOS</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-            <div class="overflow-x-auto bg-dark-secondary rounded-xl shadow-2xl p-4">
-                <table class="min-w-full divide-y divide-gray-700">
-                    <thead class="bg-dark-primary">
-                        <tr>
-                            <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">ID</th>
-                            <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Data Reg.</th>
-                            <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Aluno</th>
-                            <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Sala</th>
-                            <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider" title="Atendimento Professor">Data Prof</th>
-                            <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Data Tutor</th>
-                            <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Data Coord.</th>
-                            <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Data Gestão</th>
-                            <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
-                            <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tabela-ocorrencias" class="divide-y divide-gray-800">
-                        <tr><td colspan="10" class="text-center py-4 text-gray-400">Carregando histórico...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </main>
-        
-        <div id="modal-exclusao-overlay" class="hidden fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center p-4">
-            <div class="bg-dark-secondary p-8 rounded-xl shadow-2xl w-full max-w-sm border border-danger">
-                <h3 class="text-xl font-bold mb-4 text-danger">Confirmação de Exclusão</h3>
-                <p class="mb-6 text-gray-300">Tem certeza que deseja excluir esta ocorrência? Esta ação é irreversível.</p>
-                <div class="flex justify-end space-x-3">
-                    <button type="button" onclick="document.getElementById('modal-exclusao-overlay').classList.add('hidden')"
-                            class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition">
-                        Cancelar
-                    </button>
-                    <button type="button" onclick="excluirOcorrencia()" 
-                            class="px-4 py-2 bg-danger text-white font-semibold rounded-lg hover:bg-red-700 transition">
-                        EXCLUIR
-                    </button>
-                </div>
-            </div>
+        <div class="ml-auto flex gap-2">
+          <select id="filtro-sala" class="px-2 py-1 rounded bg-dark-secondary"></select>
+          <select id="filtro-aluno" class="px-2 py-1 rounded bg-dark-secondary"></select>
+          <button id="btn-limpar-filtros" class="px-3 py-1 rounded bg-gray-700">Limpar</button>
         </div>
+      </div>
+    </header>
 
-        <div id="modal-overlay" class="hidden fixed inset-0 bg-black bg-opacity-70 z-40 flex justify-center items-center p-4">
-            <div class="bg-dark-secondary p-8 rounded-xl shadow-2xl w-full max-w-sm">
-                <h3 id="modal-titulo" class="text-xl font-bold mb-4 text-warning">Acesso Restrito</h3>
-                <p id="modal-texto" class="mb-6"></p>
-                <form id="senha-modal" onsubmit="validarSenha(event)">
-                    <input type="password" id="input-senha" placeholder="Senha de Gestão" required
-                           class="w-full form-input mb-4" data-id="" data-type="">
-                    <div class="flex justify-end space-x-3">
-                        <button type="button" onclick="document.getElementById('modal-overlay').classList.add('hidden')"
-                                class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition">
-                            Cancelar
-                        </button>
-                        <button type="submit" 
-                                class="px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-500 transition">
-                            Confirmar
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <footer class="w-full text-center mt-10 p-4 text-gray-400 text-sm border-t border-gray-800">
-            <p class="mb-1 text-base font-medium">DESENVOLVEDOR: MARCELO CARDES E LUIS FELIPE CARDES</p>
-            <p class="text-xs font-light tracking-wide">LICENCIADO COMO TESTE PARA E.E. PEI PROFESSORA IRENE DIAS</p>
-        </footer>
-
-    </div>
-
+    <main class="bg-dark-secondary p-4 rounded">
+      <table class="w-full">
+        <thead class="text-xs text-gray-400">
+          <tr>
+            <th class="text-left p-2">Número</th>
+            <th class="text-left p-2">Aluno</th>
+            <th class="text-left p-2">Sala</th>
+            <th class="text-left p-2">Tutor</th>
+            <th class="text-left p-2">Status</th>
+            <th class="text-left p-2">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="ocorrencias-corpo" class="divide-y">
+          <tr><td colspan="6" class="py-6 text-center text-gray-400">Carregando dados...</td></tr>
+        </tbody>
+      </table>
+    </main>
+  </div>
 </body>
 </html>
-
-
