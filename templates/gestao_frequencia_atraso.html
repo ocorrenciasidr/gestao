@@ -10,10 +10,11 @@
             theme: {
                 extend: {
                     colors: {
-                        'dark-primary': '#0F172A', 'dark-secondary': '#1E293B', 'secondary-accent': '#4F46E5',
-                        'accent-success': '#10B981', 'alert-danger': '#DC2626', 'text-light': '#F8FAFC',
+                        'dark-primary': '#0F172A', 'dark-secondary': '#1E293B',
+                        'secondary-accent': '#4F46E5', 'accent-success': '#10B981',
+                        'alert-danger': '#DC2626', 'text-light': '#F8FAFC',
                     },
-                    fontFamily: { sans: ['Inter', 'sans-serif'], },
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
                 }
             }
         }
@@ -21,21 +22,15 @@
     <style>
         .form-select, .form-input {
             @apply w-full p-3 bg-white border border-gray-700 rounded-lg text-black focus:ring-secondary-accent focus:border-secondary-accent;
-            appearance: menulist !important; -webkit-appearance: menulist !important; -moz-appearance: menulist !important;
+            appearance: menulist !important;
             color: black !important;
         }
-        .form-select[type="date"]:invalid { color: #808080 !important; }
-        .form-select[type="date"]:invalid::-webkit-datetime-edit-text, 
-        .form-select[type="date"]:invalid::-webkit-datetime-edit-month-field, 
-        .form-select[type="date"]:invalid::-webkit-datetime-edit-day-field, 
-        .form-select[type="date"]:invalid::-webkit-datetime-edit-year-field {
-            color: #808080 !important;
-        }
     </style>
+
     <script>
         let salasData = [];
         let alunosData = [];
-        
+
         document.addEventListener('DOMContentLoaded', () => {
             loadSalas();
             document.getElementById('select-sala').addEventListener('change', loadAlunos);
@@ -71,7 +66,6 @@
             const salaId = document.getElementById('select-sala').value;
             const selectAluno = document.getElementById('select-aluno');
             const alunoContainer = document.getElementById('aluno-filter-container');
-            
             selectAluno.innerHTML = '<option value="">Carregando Alunos...</option>';
             document.getElementById('atraso-form-container').classList.add('hidden');
 
@@ -80,7 +74,7 @@
                 alunoContainer.classList.add('hidden');
                 return;
             }
-            
+
             try {
                 alunosData = await handleFetchResponse(`/api/alunos_por_sala/${salaId}`, 'Alunos');
                 selectAluno.innerHTML = '<option value="">Selecione o Aluno *</option>';
@@ -88,7 +82,6 @@
                     selectAluno.innerHTML += `<option value="${aluno.id}">${aluno.nome}</option>`;
                 });
                 alunoContainer.classList.remove('hidden');
-
             } catch (error) {
                 console.error("Erro ao carregar alunos:", error);
                 selectAluno.innerHTML = '<option value="">Erro ao carregar!</option>';
@@ -98,15 +91,13 @@
         function showAtrasoForm() {
             const alunoId = document.getElementById('select-aluno').value;
             const formContainer = document.getElementById('atraso-form-container');
-            
+
             if (alunoId) {
                 const now = new Date();
                 const today = now.toISOString().split('T')[0];
                 const time = now.toTimeString().split(' ')[0].substring(0, 5);
-                
                 document.getElementById('input-data').value = today;
                 document.getElementById('input-hora').value = time;
-                
                 formContainer.classList.remove('hidden');
             } else {
                 formContainer.classList.add('hidden');
@@ -119,52 +110,61 @@
             const data = document.getElementById('input-data').value;
             const hora = document.getElementById('input-hora').value;
             const motivo = document.getElementById('input-motivo').value.trim();
-            
-            if (!alunoId || !data || !hora || !motivo) {
+            const responsavel = document.getElementById('input-responsavel').value.trim();
+            const telefone = document.getElementById('input-telefone').value.trim();
+
+            if (!alunoId || !data || !hora || !motivo || !responsavel || !telefone) {
                 alert('Por favor, preencha todos os campos.');
                 return;
             }
-            
-            const registro = { aluno_id: alunoId, sala_id: salaId, data, hora, motivo };
+
+            const registro = {
+                aluno_id: alunoId,
+                sala_id: salaId,
+                data,
+                hora_atraso: hora,
+                motivo_atraso: motivo,
+                responsavel_atraso: responsavel,
+                telefone_atraso: telefone
+            };
 
             try {
-                // ROTA REAL: /api/salvar_atraso
                 const response = await fetch('/api/salvar_atraso', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(registro),
                 });
-                
                 const result = await response.json();
                 if (!response.ok) throw new Error(result.error || 'Falha no servidor');
 
-                alert(`Atraso registrado com sucesso!`);
-                
+                alert('Atraso registrado com sucesso!');
                 document.getElementById('select-aluno').value = '';
                 document.getElementById('input-motivo').value = '';
+                document.getElementById('input-responsavel').value = '';
+                document.getElementById('input-telefone').value = '';
                 document.getElementById('atraso-form-container').classList.add('hidden');
-                
             } catch (error) {
-                console.error("Erro ao salvar o atraso:", error);
+                console.error("Erro ao salvar atraso:", error);
                 alert(`ERRO: ${error.message}`);
             }
         }
     </script>
 </head>
+
 <body class="bg-dark-primary font-sans text-text-light min-h-screen">
-    <div id="app-container" class="flex flex-col items-center justify-start p-4 md:p-8">
+    <div class="flex flex-col items-center justify-start p-4 md:p-8">
 
         <header class="w-full max-w-4xl text-center mb-8 mt-4">
             <h1 class="text-3xl sm:text-4xl font-extrabold text-secondary-accent leading-tight tracking-wider">
                 REGISTRO DE ATRASO
             </h1>
-            <h2 class="text-xl sm:text-2xl text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
+            <h2 class="text-xl sm:text-2xl text-text-light mt-2 font-light border-b border-gray-700 pb-2 inline-block">
                 Controle de Entrada Tardia do Aluno
             </h2>
             <div class="mt-4">
-                 <button type="button" onclick="window.location.href='/gestao_frequencia'"
-                         class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200 ease-in-out flex items-center justify-center space-x-2 mx-auto w-full max-w-xs">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z"></path></svg>
+                <button type="button" onclick="window.location.href='/gestao_frequencia'"
+                        class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center space-x-2 mx-auto max-w-xs">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z"/></svg>
                     <span>VOLTAR AO MENU DE FREQUÊNCIA</span>
                 </button>
             </div>
@@ -188,29 +188,40 @@
                     </div>
                 </div>
             </div>
-            
+
             <div id="atraso-form-container" class="bg-dark-secondary p-8 rounded-xl shadow-2xl space-y-6 mt-6 hidden">
-                 <h3 class="text-2xl font-bold border-b border-gray-600 pb-3 text-accent-success">2. REGISTRO</h3>
-                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                     <div>
-                         <label for="input-data" class="block text-sm font-medium text-gray-300 mb-1">Data do Atraso:</label>
-                         <input type="date" id="input-data" class="form-select" required readonly>
-                     </div>
-                     <div>
-                         <label for="input-hora" class="block text-sm font-medium text-gray-300 mb-1">Hora da Chegada:</label>
-                         <input type="time" id="input-hora" class="form-select" required>
-                     </div>
-                 </div>
-                 <div>
-                    <label for="input-motivo" class="block text-sm font-medium text-gray-300 mb-1">Motivo do Atraso:</label>
-                    <textarea id="input-motivo" rows="4" placeholder="Descreva o motivo do atraso do aluno..." class="form-input w-full" required></textarea>
+                <h3 class="text-2xl font-bold border-b border-gray-600 pb-3 text-secondary-accent">2. REGISTRO DE ATRASO</h3>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="input-data" class="block text-sm font-medium text-gray-300 mb-1">Data:</label>
+                        <input id="input-data" type="date" class="form-input" required>
+                    </div>
+                    <div>
+                        <label for="input-hora" class="block text-sm font-medium text-gray-300 mb-1">Hora do Atraso:</label>
+                        <input id="input-hora" type="time" class="form-input" required>
+                    </div>
                 </div>
-                 <div class="pt-6 border-t border-gray-700">
-                     <button onclick="saveAtraso()" class="w-full bg-secondary-accent hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 ease-in-out shadow-lg shadow-indigo-500/50 flex items-center justify-center space-x-2 transform hover:scale-[1.01]">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
-                        <span>REGISTRAR ATRASO</span>
-                     </button>
-                 </div>
+
+                <div>
+                    <label for="input-motivo" class="block text-sm font-medium text-gray-300 mb-1">Motivo:</label>
+                    <textarea id="input-motivo" rows="2" class="form-input" placeholder="Motivo do atraso..." required></textarea>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="input-responsavel" class="block text-sm font-medium text-gray-300 mb-1">Responsável:</label>
+                        <input id="input-responsavel" type="text" class="form-input" placeholder="Nome do responsável" required>
+                    </div>
+                    <div>
+                        <label for="input-telefone" class="block text-sm font-medium text-gray-300 mb-1">Telefone:</label>
+                        <input id="input-telefone" type="tel" class="form-input" placeholder="(11) 99999-9999" required>
+                    </div>
+                </div>
+
+                <button type="button" onclick="saveAtraso()" class="w-full bg-accent-success hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg">
+                    Salvar Registro de Atraso
+                </button>
             </div>
         </main>
     </div>
