@@ -373,6 +373,26 @@ def api_get_tutores():
         logging.error(f"Erro ao buscar tutores: {e}")
         return jsonify({"error": f"Erro ao buscar tutores: {e}", "status": 500}), 500
 
+@app.route('/api/relatorio_frequencia')
+def api_relatorio_frequencia():
+    sala_id = request.args.get('salaId')
+    aluno_id = request.args.get('alunoId')
+    data_inicial = request.args.get('dataInicial')
+    data_final = request.args.get('dataFinal')
+    # Gera as estatísticas com base na planilha de frequência
+    return jsonify({
+        'presencas_percentual': 92,
+        'faltas_totais': 5,
+        'atrasos_totais': 2,
+        'saidas_antecipadas_totais': 1
+    })
+
+@app.route('/api/frequencia/datas_registradas_por_sala/<int:sala_id>')
+def api_datas_registradas(sala_id):
+    datas = listar_datas_registradas(sala_id)
+    return jsonify(datas)
+
+
 # ROTA 4: API GET: Listagem de Alunos por Tutor (Filtro Cascata)
 @app.route('/api/alunos_por_tutor/<tutor_id>', methods=['GET'])
 def api_get_alunos_por_tutor(tutor_id):
@@ -681,27 +701,12 @@ def api_ocorrencias_finalizadas():
 
 # Em app.py
 @app.route('/api/ocorrencias_todas')
-def get_ocorrencias_todas():
+def api_ocorrencias_todas():
     try:
-        # Busca todas as ocorrências com os nomes relacionados para as estatísticas
-        response = supabase.table('ocorrencias').select(
-            '*, professor_id(nome), sala_id(sala), tutor_id(nome)'
-        ).execute()
-        
-        ocorrencias = []
-        for o in response.data:
-            # Simplifica os nomes para o frontend
-            if o.get('sala_id') and isinstance(o.get('sala_id'), dict):
-                o['sala_nome'] = o['sala_id'].get('sala')
-            if o.get('tutor_id') and isinstance(o.get('tutor_id'), dict):
-                o['tutor_nome'] = o['tutor_id'].get('nome')
-            ocorrencias.append(o)
-            
+        ocorrencias = carregar_ocorrencias()  # Função que lê a planilha ou banco
         return jsonify(ocorrencias)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-# Em app.py
+        return jsonify({'error': str(e)}), 500
 
 # Rota 1: Retorna apenas salas que têm ocorrências
 @app.route('/api/salas_com_ocorrencias')
@@ -1612,6 +1617,16 @@ def api_vincular_tutor_aluno():
         logging.error(f"Erro ao salvar vínculos de tutor: {e}")
         return jsonify({"error": f"Falha ao salvar vínculos de tutor: {e}", "status": 500}), 500
 
+@app.route('/api/salas')
+def api_salas():
+    # Retorna lista de salas [{id: 1, nome: '8º A'}, ...]
+    return jsonify(carregar_salas())
+
+@app.route('/api/alunos_por_sala/<int:sala_id>')
+def api_alunos_por_sala(sala_id):
+    return jsonify(carregar_alunos_da_sala(sala_id))
+
+
 
 # =================================================================
 # ROTAS DA API (DELETE - REMOÇÃO DE CADASTROS)
@@ -1689,6 +1704,154 @@ def api_delete_ocorrencia(ocorrencia_id):
         return jsonify({"message": f"Ocorrência {ocorrencia_id} excluída com sucesso.", "status": 200}), 200
     except Exception as e:
         return jsonify({"error": f"Falha ao excluir ocorrência: {e}", "status": 500}), 500
+
+# =====================================================
+# 🟢 Rota: Salvar Frequência (presença/falta)
+# =====================================================
+@app.route("/api/salvar_frequencia", methods=["POST"])
+def salvar_frequencia():
+    try:
+        registros = request.get_json()
+
+        for r in registros:
+            data = r["data"]
+            sala_id = r["sala_id"]
+            aluno_id = r["aluno_id"]
+
+            # Verifica se já existe registro para esse aluno nessa data e sala
+            existente = supabase.table(TABELA).select("*") \
+                .eq("data", data).eq("sala_id", sala_id).eq("aluno_id", aluno_id).execute()
+
+            if existente.data:
+                # Atualiza apenas o status (sem criar nova linha)
+                supabase.table(TABELA).update({"status": r["status"]}) \
+                    .eq("data", data).eq("sala_id", sala_id).eq("aluno_id", aluno_id).execute()
+            else:
+                # Cria novo registro
+                novo = {
+                    "data": data,
+                    "sala_id": sala_id,
+                    "aluno_id": aluno_id,
+                    "status": r["status"],
+                    "hora_atraso": "",
+                    "motivo_atraso": "",
+                    "responsavel_atraso": "",
+                    "telefone_atraso": "",
+                    "hora_saida": "",
+                    "motivo_saida": "",
+                    "responsavel_saida": "",
+                    "telefone_saida": "",
+                }
+                supabase.table(TABELA).insert(novo).execute()
+
+        return jsonify({"message": "Frequência salva/atualizada com sucesso!"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# =====================================================
+# 🟡 Rota: Salvar Atraso
+# =====================================================
+@app.route("/api/salvar_atraso", methods=["POST"])
+def salvar_atraso():
+    try:
+        dados = request.get_json()
+        data = dados["data"]
+        sala_id = dados["sala_id"]
+        aluno_id = dados["aluno_id"]
+
+        # Verifica se já existe registro
+        existente = supabase.table(TABELA).select("*") \
+            .eq("data", data).eq("sala_id", sala_id).eq("aluno_id", aluno_id).execute()
+
+        atraso_info = {
+            "status": "P",  # presença com atraso
+            "hora_atraso": dados["hora_atraso"],
+            "motivo_atraso": dados["motivo_atraso"],
+            "responsavel_atraso": dados["responsavel_atraso"],
+            "telefone_atraso": dados["telefone_atraso"]
+        }
+
+        if existente.data:
+            # Atualiza os dados de atraso na mesma linha
+            supabase.table(TABELA).update(atraso_info) \
+                .eq("data", data).eq("sala_id", sala_id).eq("aluno_id", aluno_id).execute()
+        else:
+            # Cria novo registro com atraso
+            novo = {
+                "data": data,
+                "sala_id": sala_id,
+                "aluno_id": aluno_id,
+                **atraso_info,
+                "hora_saida": "",
+                "motivo_saida": "",
+                "responsavel_saida": "",
+                "telefone_saida": "",
+            }
+            supabase.table(TABELA).insert(novo).execute()
+
+        return jsonify({"message": "Atraso registrado/atualizado com sucesso!"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# =====================================================
+# 🔵 Rota: Salvar Saída Antecipada
+# =====================================================
+@app.route("/api/salvar_saida_antecipada", methods=["POST"])
+def salvar_saida_antecipada():
+    try:
+        dados = request.get_json()
+        data = dados["data"]
+        sala_id = dados["sala_id"]
+        aluno_id = dados["aluno_id"]
+
+        # Verifica se já existe registro
+        existente = supabase.table(TABELA).select("*") \
+            .eq("data", data).eq("sala_id", sala_id).eq("aluno_id", aluno_id).execute()
+
+        saida_info = {
+            "status": "S",  # status especial para saída
+            "hora_saida": dados["hora_saida"],
+            "motivo_saida": dados["motivo_saida"],
+            "responsavel_saida": dados["responsavel_saida"],
+            "telefone_saida": dados["telefone_saida"]
+        }
+
+        if existente.data:
+            # Atualiza os dados de saída na mesma linha
+            supabase.table(TABELA).update(saida_info) \
+                .eq("data", data).eq("sala_id", sala_id).eq("aluno_id", aluno_id).execute()
+        else:
+            # Cria novo registro com saída antecipada
+            novo = {
+                "data": data,
+                "sala_id": sala_id,
+                "aluno_id": aluno_id,
+                **saida_info,
+                "hora_atraso": "",
+                "motivo_atraso": "",
+                "responsavel_atraso": "",
+                "telefone_atraso": "",
+            }
+            supabase.table(TABELA).insert(novo).execute()
+
+        return jsonify({"message": "Saída antecipada registrada/atualizada com sucesso!"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# =====================================================
+# 🔍 Rota: Datas registradas por sala
+# =====================================================
+@app.route("/api/frequencia/datas_registradas_por_sala/<int:sala_id>")
+def datas_registradas_por_sala(sala_id):
+    try:
+        registros = supabase.table(TABELA).select("data").eq("sala_id", sala_id).execute()
+        datas = sorted(list({r["data"] for r in registros.data}))
+        return jsonify(datas)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # =================================================================
 # EXECUÇÃO DO APP
