@@ -62,8 +62,8 @@
             try {
                 salasData = await handleFetchResponse('/api/salas', 'Salas');
                 selectSala.innerHTML = '<option value="">SELECIONE A SALA *</option>';
-                salasData.sort((a, b) => a.nome_turma.localeCompare(b.nome_turma)).forEach(s => { 
-                    selectSala.innerHTML += `<option value="${s.id}">${s.nome_turma}</option>`; 
+                salasData.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(s => { 
+                    selectSala.innerHTML += `<option value="${s.id}">${s.nome}</option>`; 
                 });
                 
             } catch (error) { 
@@ -231,4 +231,5 @@
                 <div id="print-button-container" class="pt-4 border-t border-gray-700 hidden">
                     <button onclick="imprimirRelatorio()" 
                             class="w-full bg-accent hover:bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg transition duration-200 ease-in-out shadow-lg flex items-center justify-center space-x-2 transform hover:scale-[1.005]">
+
                          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24
