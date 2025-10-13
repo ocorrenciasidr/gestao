@@ -65,8 +65,8 @@
                 salasData = await handleFetchResponse('/api/salas', 'Salas');
                 
                 selectSala.innerHTML = '<option value="">SELECIONE A SALA *</option>';
-                salasData.sort((a, b) => a.nome_turma.localeCompare(b.nome_turma)).forEach(s => {
-                    selectSala.innerHTML += `<option value="${s.id}">${s.nome_turma}</option>`;
+                salasData.sort((a, b) => a.nome.localeCompare(b.nome)).forEach(s => {
+                    selectSala.innerHTML += `<option value="${s.id}">${s.nome}</option>`;
                 });
             } catch (error) {
                 selectSala.innerHTML = '<option value="">ERRO AO CARREGAR SALAS</option>';
@@ -265,3 +265,4 @@ window.gerarRelatorio = async function() { // Adicionado 'async' para usar await
 </body>
 
 </html>
+
