@@ -3,55 +3,32 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Detalhes da Ocorrência</title>
+<title>Editar Ocorrência</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
-  // Configuração personalizada do Tailwind (Padronizado com a Home)
-  tailwind.config = {
-      theme: {
-          extend: {
-              colors: {
-                  'dark-primary': '#0F172A', // Fundo Principal
-                  'dark-secondary': '#1E293B', // Fundo dos Containers
-                  'accent': '#0D9488', // Teal 600 (Cor principal do MÓDULO OCORRÊNCIA)
-                  'input-bg': '#374151', // Fundo dos campos de entrada
-                  'text-light': '#F8FAFC', // Texto Claro (Branco/Quase Branco)
-              },
-              fontFamily: {
-                  sans: ['Inter', 'sans-serif'],
-              },
-          }
-      }
-  };
+  tailwind.config = { theme: { extend: { colors: { 'dark-primary':'#0F172A','dark-secondary':'#1E293B','accent':'#10B981','text-light':'#FFFFFF' }}}};
 
   let numeroGlobal = null;
-  
   document.addEventListener('DOMContentLoaded', () => {
     const params = new URLSearchParams(window.location.search);
     numeroGlobal = params.get('id') || params.get('numero');
     const modo = params.get('modo') || 'visualizar';
-    const nivel = params.get('nivel'); // Nível de atendimento (tutor, coordenacao, gestao)
 
     if (!numeroGlobal) {
       alert('Número da ocorrência não fornecido.');
       return;
     }
-    carregarDetalhes(numeroGlobal, modo, nivel);
-    
-    // Configuração do botão Voltar (Padrão)
-    const btnVoltar = document.getElementById('btn-voltar-principal');
+    carregarDetalhes(numeroGlobal, modo);
+    const btnVoltar = document.getElementById('btn-voltar');
     btnVoltar.addEventListener('click', () => {
-      // Volta para a lista apropriada (Abertas ou Finalizadas)
-      if (modo === 'visualizar' || params.get('origem') === 'finalizadas') {
-         window.location.href = '/gestao_ocorrencia_finalizadas';
-      } else {
-         window.location.href = '/gestao_ocorrencia_abertas';
-      }
+      if (modo === 'visualizar') window.location.href = '/gestao_ocorrencia_finalizadas';
+      else if (modo === 'atendimento') window.location.href = '/gestao_ocorrencia_abertas';
+      else window.location.href = '/gestao_ocorrencia';
     });
 
     document.getElementById('form-atendimento').addEventListener('submit', async (e) => {
       e.preventDefault();
-      await salvarAtendimento(nivel);
+      await salvarAtendimento();
     });
   });
 
@@ -59,58 +36,51 @@
     const el = document.getElementById('mensagem-status');
     el.textContent = msg;
     el.style.background = tipo === 'success' ? '#10B981' : (tipo === 'danger' ? '#DC2626' : '#1E293B');
-    el.classList.remove('hidden');
-    setTimeout(()=> el.classList.add('hidden'), 2500);
+    setTimeout(()=> el.textContent = '', 2500);
   }
 
-  async function carregarDetalhes(numero, modo, nivel) {
+  async function carregarDetalhes(numero, modo) {
     try {
-      const resp = await fetch(`/api/ocorrencias/${encodeURIComponent(numero)}`);
+      const resp = await fetch(`/api/ocorrencia_detalhes?numero=${encodeURIComponent(numero)}`);
       if (!resp.ok) throw new Error('Falha ao carregar detalhes');
       const occ = await resp.json();
 
-      // Preenche campos de exibição
+      // Preenche campos
       document.getElementById('numero').textContent = occ.numero;
-      document.getElementById('aluno').textContent = occ.aluno_nome || 'N/A';
-      document.getElementById('sala').textContent = occ.sala_nome || 'N/A';
-      document.getElementById('tutor').textContent = occ.tutor_nome || 'N/A';
-      document.getElementById('status').textContent = occ.status || 'N/A';
-      
-      // NOVO CAMPO: Professor Solicitante
-      document.getElementById('professor-solicitante').textContent = occ.professor_nome || 'N/A';
+      document.getElementById('aluno').textContent = occ.aluno_nome || '';
+      document.getElementById('sala').textContent = occ.sala_nome || '';
+      document.getElementById('tutor').textContent = occ.tutor_nome || '';
+      document.getElementById('professor').textContent = occ.professor_nome || '';
+      document.getElementById('status').textContent = occ.status || '';
 
-      // Preenche Textareas
       document.getElementById('descricao').value = occ.descricao || '';
-      document.getElementById('atendimento_professor').value = occ.atendimento_professor || 'Não Registrado'; // NOVO CAMPO
+      document.getElementById('atendimento_professor').value = occ.atendimento_professor || '';
       document.getElementById('atendimento_tutor').value = occ.atendimento_tutor || '';
       document.getElementById('atendimento_coordenacao').value = occ.atendimento_coordenacao || '';
       document.getElementById('atendimento_gestao').value = occ.atendimento_gestao || '';
-      
-      // Ajusta o modo de visualização / edição
-      // Todos os campos de texto são desabilitados por padrão (visualização)
-      ['descricao', 'atendimento_professor', 'atendimento_tutor','atendimento_coordenacao','atendimento_gestao'].forEach(id => {
+
+      if (modo === 'atendimento') {
+        const nivel = (new URLSearchParams(window.location.search)).get('nivel');
+        ['atendimento_professor','atendimento_tutor','atendimento_coordenacao','atendimento_gestao'].forEach(id => {
           const el = document.getElementById(id);
           el.readOnly = true;
-          el.classList.add('bg-dark-secondary');
-      });
-
-      if (modo === 'atendimento' && nivel) {
-        // Habilita apenas o campo do nível atual para edição
-        let campoId = '';
-        if (nivel === 'tutor') campoId = 'atendimento_tutor';
-        else if (nivel === 'coordenacao') campoId = 'atendimento_coordenacao';
-        else if (nivel === 'gestao') campoId = 'atendimento_gestao';
-
-        if (campoId) {
-          const campo = document.getElementById(campoId);
+          el.classList.add('bg-gray-800');
+        });
+        if (nivel) {
+          const mapa = { professor: 'atendimento_professor', tutor: 'atendimento_tutor', coordenacao: 'atendimento_coordenacao', gestao: 'atendimento_gestao' };
+          const campo = document.getElementById(mapa[nivel]);
           campo.readOnly = false;
-          campo.classList.remove('bg-dark-secondary');
-          campo.classList.add('bg-input-bg'); // Coloca o fundo de input ativo
+          campo.classList.remove('bg-gray-800');
           campo.focus();
         }
-        document.getElementById('btn-salvar').classList.remove('hidden');
-      } 
-      
+        document.getElementById('btn-salvar').style.display = 'inline-block';
+      } else {
+        ['descricao','atendimento_professor','atendimento_tutor','atendimento_coordenacao','atendimento_gestao'].forEach(id => {
+          document.getElementById(id).readOnly = true;
+          document.getElementById(id).classList.add('bg-gray-800');
+        });
+        document.getElementById('btn-salvar').style.display = 'none';
+      }
       mostrarMsg('Detalhes carregados', 'success');
     } catch (e) {
       console.error(e);
@@ -118,161 +88,99 @@
     }
   }
 
-  async function salvarAtendimento(nivel) {
+  async function salvarAtendimento() {
     try {
-      if (!nivel) { mostrarMsg('Nível de atendimento não informado.', 'danger'); return; }
-      
-      // Mapeia o campo de texto a ser salvo
-      const campoId = nivel === 'tutor' ? 'atendimento_tutor' : (nivel === 'coordenacao' ? 'atendimento_coordenacao' : 'atendimento_gestao');
-      const texto = document.getElementById(campoId).value.trim();
-      
-      if (!texto) { mostrarMsg('Preencha o atendimento antes de salvar.', 'danger'); return; }
+      const params = new URLSearchParams(window.location.search);
+      const nivel = params.get('nivel');
+      if (!nivel) { mostrarMsg('Nível não informado', 'danger'); return; }
+      const mapa = { professor: 'atendimento_professor', tutor: 'atendimento_tutor', coordenacao: 'atendimento_coordenacao', gestao: 'atendimento_gestao' };
+      const texto = document.getElementById(mapa[nivel]).value.trim();
+      if (!texto) { mostrarMsg('Preencha o atendimento', 'danger'); return; }
 
-      const payload = { nivel: nivel, texto_atendimento: texto };
-      
-      // Rota correta para registrar atendimento
-      const resp = await fetch(`/api/registrar_atendimento/${numeroGlobal}`, { 
-          method: 'POST', 
-          headers: {'Content-Type':'application/json'}, 
-          body: JSON.stringify(payload) 
-      });
-      
+      const payload = { numero: numeroGlobal, nivel: nivel, texto: texto };
+      const resp = await fetch('/api/registrar_atendimento', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
       const j = await resp.json();
       if (!resp.ok) throw new Error(j.error || j.message || 'Erro ao salvar');
-      
-      mostrarMsg('Atendimento salvo!', 'success');
+      mostrarMsg('Atendimento salvo', 'success');
 
-      // Volta para a lista de ocorrências abertas
       setTimeout(() => {
-        window.location.href = '/gestao_ocorrencia_abertas';
+        if (params.get('modo') === 'visualizar') window.location.href = '/gestao_ocorrencia_finalizadas';
+        else window.location.href = '/gestao_ocorrencia_abertas';
       }, 800);
-      
     } catch (e) {
       console.error(e);
       mostrarMsg('Erro ao salvar: ' + (e.message || e), 'danger');
     }
   }
 </script>
-<style>
-  /* PADRONIZAÇÃO DO TEMA E FONTES */
-  body {
-    background-color: #0F172A; /* dark-primary */
-    color: #F8FAFC; /* text-light (Branco) */
-  }
-  .form-textarea {
-      /* Estilo base para os campos de texto */
-      @apply w-full rounded p-3 mt-1 text-text-light border border-gray-600;
-  }
-  .bg-dark-secondary {
-      background-color: #1E293B;
-  }
-  /* Garante que o texto dentro dos campos desabilitados seja branco */
-  .bg-dark-secondary, .bg-input-bg {
-      color: #F8FAFC; 
-  }
-  /* Estilo para cabeçalhos de dados */
-  .data-label {
-      @apply text-gray-400 text-sm font-light;
-  }
-  .data-value {
-      @apply text-white text-base font-medium;
-  }
-</style>
 </head>
-<body class="bg-dark-primary font-sans text-text-light">
-  
-  <div id="mensagem-status" class="hidden fixed top-4 right-4 p-3 rounded text-text-light z-50"></div>
-  
-  <div id="app-container" class="flex flex-col items-center justify-between p-4 md:p-8">
+<body class="bg-dark-primary min-h-screen p-6 text-white">
+  <div id="mensagem-status" class="fixed top-4 right-4 p-3 rounded text-white"></div>
 
-      <!-- BOTÃO VOLTAR (PADRÃO) -->
-      <div class="w-full max-w-4xl flex justify-start mb-6">
-          <button id="btn-voltar-principal"
-                  class="flex items-center space-x-1 text-sm font-semibold text-gray-400 hover:text-accent transition duration-200">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-              <span>Voltar</span>
-          </button>
+  <!-- Cabeçalho padronizado -->
+  <header class="w-full text-center mb-8 mt-4">
+    <h1 class="text-xl sm:text-2xl text-white mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
+      SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR
+    </h1><br>
+    <h2 class="text-xl sm:text-2xl text-white mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
+      GESTÃO DE AULA
+    </h2>
+  </header>
+
+  <div class="max-w-4xl mx-auto">
+    <main class="bg-dark-secondary p-6 rounded text-white shadow-md">
+      <div class="mb-3 flex justify-between items-center">
+        <h1 class="text-2xl font-bold text-accent">Editar Ocorrência</h1>
+        <button id="btn-voltar" class="px-3 py-1 bg-gray-600 rounded text-white">Voltar</button>
       </div>
 
-      <!-- HEADER E TÍTULO (PADRÃO) -->
-      <header class="w-full text-center mb-8 mt-4">
-          <h1 class="text-xl sm:text-2xl font-extrabold text-gray-400 leading-tight tracking-wider">
-              SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR
-          </h1><br>
-          <h2 class="text-xl sm:text-2xl text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
-              DETALHES DA OCORRÊNCIA Nº <span id="numero">...</span>
-          </h2>
-      </header>
+      <div class="mb-3"><strong>Número:</strong> <span id="numero"></span></div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+        <div><strong>Aluno</strong><div id="aluno"></div></div>
+        <div><strong>Sala</strong><div id="sala"></div></div>
+      </div>
 
-      <main class="w-full max-w-4xl bg-dark-secondary p-6 rounded-xl shadow-2xl space-y-6">
-        
-        <!-- SEÇÃO DE DADOS BÁSICOS -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-gray-700 pb-4">
-          
-          <div><div class="data-label">Aluno</div><div id="aluno" class="data-value"></div></div>
-          <div><div class="data-label">Sala</div><div id="sala" class="data-value"></div></div>
-          <div><div class="data-label">Tutor</div><div id="tutor" class="data-value"></div></div>
-          
-          <!-- NOVO CAMPO: PROFESSOR SOLICITANTE -->
-          <div><div class="data-label">Prof. Solicitante</div><div id="professor-solicitante" class="data-value"></div></div>
-          
-          <div><div class="data-label">Status</div><div id="status" class="data-value text-accent"></div></div>
+      <div class="mb-3"><strong>Professor Responsável:</strong> <div id="professor"></div></div>
+      <div class="mb-3"><strong>Tutor:</strong> <div id="tutor"></div></div>
+      <div class="mb-3"><strong>Status:</strong> <div id="status"></div></div>
+
+      <div class="mb-3">
+        <label>Descrição</label>
+        <textarea id="descricao" rows="3" class="w-full bg-gray-700 text-white rounded p-2"></textarea>
+      </div>
+
+      <form id="form-atendimento">
+        <div class="mb-3">
+          <label>Atendimento Professor</label>
+          <textarea id="atendimento_professor" rows="2" class="w-full bg-gray-700 text-white rounded p-2"></textarea>
         </div>
-
-        <!-- SEÇÃO DE DESCRIÇÃO E ATENDIMENTO PROFESSOR -->
-        <div class="space-y-4">
-          
-          <div>
-            <label class="data-label block mb-1">Descrição do Fato</label>
-            <textarea id="descricao" rows="4" class="form-textarea bg-dark-secondary"></textarea>
-          </div>
-
-          <!-- CAMPO ATENDIMENTO PROFESSOR -->
-          <div>
-            <label class="data-label block mb-1">Atendimento Professor</label>
-            <textarea id="atendimento_professor" rows="3" class="form-textarea bg-dark-secondary"></textarea>
-          </div>
-
+        <div class="mb-3">
+          <label>Atendimento Tutor</label>
+          <textarea id="atendimento_tutor" rows="2" class="w-full bg-gray-700 text-white rounded p-2"></textarea>
         </div>
-
-        <!-- SEÇÃO DE ATENDIMENTOS (TUTOR, COORDENAÇÃO, GESTÃO) -->
-        <form id="form-atendimento" class="pt-4 border-t border-gray-700 space-y-4">
-          
-          <h3 class="text-xl font-bold text-accent">Atendimentos Internos</h3>
-          
-          <div>
-            <label class="data-label block mb-1">Atendimento Tutor</label>
-            <textarea id="atendimento_tutor" rows="2" class="form-textarea bg-dark-secondary"></textarea>
-          </div>
-          <div>
-            <label class="data-label block mb-1">Atendimento Coordenação</label>
-            <textarea id="atendimento_coordenacao" rows="2" class="form-textarea bg-dark-secondary"></textarea>
-          </div>
-          <div>
-            <label class="data-label block mb-1">Atendimento Gestão</label>
-            <textarea id="atendimento_gestao" rows="2" class="form-textarea bg-dark-secondary"></textarea>
-          </div>
-
-          <div class="flex justify-end pt-2">
-            <button id="btn-salvar" type="submit" 
-                    class="px-4 py-2 bg-accent hover:bg-teal-700 rounded-lg font-bold text-white transition hidden">
-              Salvar Atendimento
-            </button>
-          </div>
-        </form>
-      </main>
-      
-      <!-- RODAPÉ (PADRÃO) -->
-      <footer class="w-full text-center mt-10 p-4 text-gray-400 text-sm border-t border-gray-800">
-          <p class="mb-1 text-base font-medium">
-              DESENVOLVEDOR: MARCELO ANDRÉ NOGUEIRA CARDES
-          </p>
-          <p class="text-xs font-light tracking-wide">
-              LICENCIADO COMO TESTE PARA E.E. PEI PROFESSORA IRENE DIAS RIBEIRO
-          </p>
-      </footer>
+        <div class="mb-3">
+          <label>Atendimento Coordenação</label>
+          <textarea id="atendimento_coordenacao" rows="2" class="w-full bg-gray-700 text-white rounded p-2"></textarea>
+        </div>
+        <div class="mb-3">
+          <label>Atendimento Gestão</label>
+          <textarea id="atendimento_gestao" rows="2" class="w-full bg-gray-700 text-white rounded p-2"></textarea>
+        </div>
+        <div class="flex gap-2">
+          <button id="btn-salvar" type="submit" class="px-4 py-2 bg-accent rounded hidden text-white">Salvar Atendimento</button>
+        </div>
+      </form>
+    </main>
   </div>
+
+  <!-- Rodapé padronizado -->
+  <footer class="w-full text-center mt-10 p-4 text-gray-400 text-sm border-t border-gray-800">
+    <p class="mb-1 text-base font-medium">
+      DESENVOLVEDOR: MARCELO ANDRÉ NOGUEIRA CARDES
+    </p>
+    <p class="text-xs font-light tracking-wide">
+      LICENCIADO COMO TESTE PARA E.E. PEI PROFESSORA IRENE DIAS RIBEIRO
+    </p>
+  </footer>
 </body>
 </html>
