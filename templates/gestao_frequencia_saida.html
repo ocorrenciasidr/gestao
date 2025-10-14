@@ -114,33 +114,35 @@
             const telefone = document.getElementById('input-telefone').value.trim();
 
             if (!alunoId || !data || !hora || !motivo || !responsavel || !telefone) {
-                alert('Por favor, preencha todos os campos obrigatórios (Sala, Aluno, Data, Hora, Motivo, Responsável, Telefone).');
+                alert('Por favor, preencha todos os campos.');
                 return;
             }
 
+            // NOVO CÓDIGO para gestao_frequencia_saida.html
             const registro = {
                 aluno_id: alunoId,
                 sala_id: salaId,
                 data,
+                // ADICIONADO: Chaves simples para validação do backend
+                hora: hora,
+                motivo: motivo,
+                responsavel: responsavel,
+                telefone: telefone,
+                
+                // Campos que o DB espera (para Saída)
                 hora_saida: hora,
                 motivo_saida: motivo,
                 responsavel_saida: responsavel,
                 telefone_saida: telefone
             };
-
             try {
                 const response = await fetch('/api/salvar_saida_antecipada', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(registro),
                 });
-                
-                const result = await response.json().catch(() => ({}));
-                
-                if (!response.ok) {
-                    const errorMessage = result.error || response.statusText || 'Erro desconhecido ao salvar o registro. Verifique o servidor.';
-                    throw new Error(errorMessage);
-                }
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.error || 'Falha no servidor');
 
                 alert('Saída antecipada registrada com sucesso!');
                 document.getElementById('select-aluno').value = '';
@@ -150,7 +152,7 @@
                 document.getElementById('saida-form-container').classList.add('hidden');
             } catch (error) {
                 console.error("Erro ao salvar saída:", error);
-                alert(`ERRO ao salvar saída: ${error.message}. Por favor, verifique a implementação da API.`);
+                alert(`ERRO: ${error.message}`);
             }
         }
     </script>

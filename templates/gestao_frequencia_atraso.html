@@ -114,19 +114,24 @@
             const telefone = document.getElementById('input-telefone').value.trim();
 
             if (!alunoId || !data || !hora || !motivo || !responsavel || !telefone) {
-                alert('Por favor, preencha todos os campos obrigatórios (Sala, Aluno, Data, Hora, Motivo, Responsável, Telefone).');
+                alert('Por favor, preencha todos os campos.');
                 return;
             }
 
             const registro = {
-                aluno_id: alunoId,
-                sala_id: salaId,
-                data,
-                hora_atraso: hora,
-                motivo_atraso: motivo,
-                responsavel_atraso: responsavel,
-                telefone_atraso: telefone
-            };
+    aluno_id: alunoId,
+    sala_id: salaId,
+    data: data,
+    hora: hora, // Necessário para a validação do Python
+    motivo: motivo, // Necessário para a validação do Python
+    responsavel: responsavel, // Necessário para a validação do Python
+    telefone: telefone, // Necessário para a validação do Python
+    // Campos que o DB espera (Hora/Motivo, Responsável/Telefone)
+    hora_atraso: hora,
+    motivo_atraso: motivo,
+    responsavel_atraso: responsavel,
+    telefone_atraso: telefone
+};
 
             try {
                 const response = await fetch('/api/salvar_atraso', {
@@ -134,13 +139,8 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(registro),
                 });
-                
-                const result = await response.json().catch(() => ({}));
-                
-                if (!response.ok) {
-                    const errorMessage = result.error || response.statusText || 'Erro desconhecido ao salvar o registro. Verifique o servidor.';
-                    throw new Error(errorMessage);
-                }
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.error || 'Falha no servidor');
 
                 alert('Atraso registrado com sucesso!');
                 document.getElementById('select-aluno').value = '';
@@ -150,7 +150,7 @@
                 document.getElementById('atraso-form-container').classList.add('hidden');
             } catch (error) {
                 console.error("Erro ao salvar atraso:", error);
-                alert(`ERRO ao salvar atraso: ${error.message}. Por favor, verifique a implementação da API.`);
+                alert(`ERRO: ${error.message}`);
             }
         }
     </script>

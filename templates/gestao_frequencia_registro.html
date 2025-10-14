@@ -42,8 +42,8 @@
             const response = await fetch(url);
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                alert(`Erro ao buscar ${context}: ${errorData.error || response.statusText}`);
-                throw new Error(`Falha no fetch de ${context}`);
+                // Removida a exibição do alerta de erro na busca de datas para não interromper a UX
+                throw new Error(`Falha no fetch de ${context}: ${errorData.error || response.statusText}`);
             }
             return response.json();
         }
@@ -75,7 +75,8 @@
 
             alunosContainer.classList.add('hidden');
             listaBody.innerHTML = '';
-            btnSalvar.classList.add('hidden'); // Esconder por padrão
+            btnSalvar.classList.add('hidden');
+            btnSalvar.textContent = "Salvar Frequência"; // Reseta o texto do botão
 
             if (!salaId || !dataSelecionada) return;
 
@@ -112,13 +113,52 @@
             loadAlunos(salaId, dataSelecionada);
         }
 
-        // Função placeholder para iniciar a edição (requer implementação de backend)
-        function iniciarEdicao(salaId, dataSelecionada) {
-            alert("Funcionalidade de Edição selecionada. A implementação desta função exigirá uma chamada à API para carregar os dados de frequência existentes (P/F) e lógica para reativar os botões de Presença/Falta. Por enquanto, a edição não está funcional.");
-            // Implementação futura:
-            // 1. Chamar uma API como `/api/frequencia/${salaId}/${dataSelecionada}` para buscar os status P/F.
-            // 2. Chamar loadAlunos, mas com a lista de alunos e seus respectivos status já definidos, 
-            //    e garantir que o botão "Salvar Frequência" (que agora será "Atualizar Frequência") esteja visível.
+        // NOVO: Função para carregar dados existentes para edição
+        async function iniciarEdicao(salaId, dataSelecionada) {
+            const alunosContainer = document.getElementById('alunos-list-container');
+            const listaBody = document.getElementById('alunos-list-body');
+            const btnSalvar = document.getElementById('btn-salvar-frequencia');
+            
+            try {
+                // Chama a nova rota do backend para buscar os status P/F existentes
+                const frequenciaExistente = await handleFetchResponse(`/api/frequencia/detalhes/${salaId}/${dataSelecionada}`, 'Frequência Existente');
+                
+                listaBody.innerHTML = '';
+                if (frequenciaExistente.length === 0) {
+                    listaBody.innerHTML = `<tr><td colspan="2" class="p-4 text-center text-gray-400">Nenhum registro de frequência encontrado para esta data.</td></tr>`;
+                    btnSalvar.classList.add('hidden');
+                } else {
+                    frequenciaExistente.forEach(item => {
+                        const status = item.status === 'F' ? 'F' : 'P';
+                        const isFalta = status === 'F';
+                        const statusClass = isFalta ? 'bg-alert-danger' : 'bg-accent-success';
+                        
+                        const tr = document.createElement('tr');
+                        tr.className = 'border-b border-gray-700 hover:bg-dark-secondary/50 transition';
+                        tr.innerHTML = `
+                            <td class="p-3 text-sm font-medium text-text-light">${item.nome}</td>
+                            <td class="p-3">
+                                <button onclick="toggleFrequencia(this)" data-aluno-id="${item.aluno_id}" data-status="${status}"
+                                        class="w-12 h-10 text-xl font-extrabold rounded-md transition duration-150 shadow-md ${statusClass} hover:opacity-80 text-white">${status}</button>
+                            </td>`;
+                        listaBody.appendChild(tr);
+                    });
+                    
+                    // Reativa o botão de salvar/atualizar
+                    btnSalvar.textContent = "Atualizar Frequência";
+                    btnSalvar.classList.remove('hidden');
+                }
+
+            } catch (error) {
+                console.error("Erro ao carregar frequência para edição:", error);
+                alert(`ERRO: ${error.message}`);
+                listaBody.innerHTML = `<tr><td colspan="2" class="p-4 text-center text-alert-danger">Erro ao carregar dados para edição.</td></tr>`;
+                btnSalvar.classList.add('hidden');
+            } finally {
+                const salaNome = salasData.find(s => s.id == salaId)?.nome || 'Sala';
+                document.getElementById('list-title').textContent = `Editando Frequência da ${salaNome} em ${formatDate(dataSelecionada)}`;
+                alunosContainer.classList.remove('hidden');
+            }
         }
 
 
@@ -126,6 +166,7 @@
             const alunosContainer = document.getElementById('alunos-list-container');
             const listaBody = document.getElementById('alunos-list-body');
             const btnSalvar = document.getElementById('btn-salvar-frequencia');
+            btnSalvar.textContent = "Salvar Frequência"; // Reseta o texto do botão
 
             try {
                 const alunosDaSala = await handleFetchResponse(`/api/alunos_por_sala/${salaId}`, 'Alunos');
@@ -197,20 +238,19 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(listaFrequencia),
                 });
-                
                 const result = await response.json();
+                if (!response.ok) throw new Error(result.error || 'Erro no servidor.');
                 
-                if (!response.ok) {
-                    const errorMessage = result.error || response.statusText || 'Erro desconhecido no servidor.';
-                    throw new Error(errorMessage);
+                const action = document.getElementById('btn-salvar-frequencia').textContent.includes('Atualizar') ? 'atualizada' : 'salva';
+                alert(`Frequência ${action} com sucesso!`);
+
+                if (!datasRegistradas.includes(data)) {
+                    datasRegistradas.push(data);
                 }
                 
-                alert(result.message || 'Frequência salva com sucesso!');
-                datasRegistradas.push(data);
                 desabilitarFormularioAposSalvar();
             } catch (error) {
-                alert(`ERRO ao salvar frequência: ${error.message}`);
-                console.error("Detalhes do erro:", error);
+                alert(`ERRO: ${error.message}`);
             }
         }
 
@@ -223,7 +263,7 @@
                 b.classList.add('opacity-50');
             });
             const msg = document.createElement('tr');
-            msg.innerHTML = `<td colspan="2" class="p-4 text-center text-accent-success font-bold">Frequência salva com sucesso!</td>`;
+            msg.innerHTML = `<td colspan="2" class="p-4 text-center text-accent-success font-bold">Frequência salva/atualizada com sucesso!</td>`;
             listaBody.insertAdjacentElement('afterbegin', msg);
         }
 
