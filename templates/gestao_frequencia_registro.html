@@ -75,6 +75,7 @@
 
             alunosContainer.classList.add('hidden');
             listaBody.innerHTML = '';
+            btnSalvar.classList.add('hidden'); // Esconder por padrão
 
             if (!salaId || !dataSelecionada) return;
 
@@ -87,14 +88,39 @@
             if (datasRegistradas.includes(dataSelecionada)) {
                 const salaNome = salasData.find(s => s.id == salaId)?.nome || 'Sala';
                 document.getElementById('list-title').textContent = `Frequência de ${salaNome} em ${formatDate(dataSelecionada)}`;
-                listaBody.innerHTML = `<tr><td colspan="2" class="p-4 text-center text-yellow-400 font-bold">A frequência para esta sala e data já foi registrada.</td></tr>`;
-                btnSalvar.classList.add('hidden');
+                
+                // Exibe mensagem e botão de edição
+                listaBody.innerHTML = `
+                    <tr>
+                        <td colspan="2" class="p-4 text-center text-yellow-400 font-bold">
+                            A frequência para esta sala e data já foi registrada.
+                        </td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" class="p-4 text-center">
+                            <button onclick="iniciarEdicao('${salaId}', '${dataSelecionada}')" 
+                                    class="bg-secondary-accent hover:bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg transition duration-150">
+                                Editar Frequência
+                            </button>
+                        </td>
+                    </tr>
+                `;
                 alunosContainer.classList.remove('hidden');
                 return;
             }
 
             loadAlunos(salaId, dataSelecionada);
         }
+
+        // Função placeholder para iniciar a edição (requer implementação de backend)
+        function iniciarEdicao(salaId, dataSelecionada) {
+            alert("Funcionalidade de Edição selecionada. A implementação desta função exigirá uma chamada à API para carregar os dados de frequência existentes (P/F) e lógica para reativar os botões de Presença/Falta. Por enquanto, a edição não está funcional.");
+            // Implementação futura:
+            // 1. Chamar uma API como `/api/frequencia/${salaId}/${dataSelecionada}` para buscar os status P/F.
+            // 2. Chamar loadAlunos, mas com a lista de alunos e seus respectivos status já definidos, 
+            //    e garantir que o botão "Salvar Frequência" (que agora será "Atualizar Frequência") esteja visível.
+        }
+
 
         async function loadAlunos(salaId, dataSelecionada) {
             const alunosContainer = document.getElementById('alunos-list-container');
@@ -111,6 +137,7 @@
                     alunosDaSala.forEach(aluno => {
                         const tr = document.createElement('tr');
                         tr.className = 'border-b border-gray-700 hover:bg-dark-secondary/50 transition';
+                        // Status inicial padrão é 'P' (Presente)
                         tr.innerHTML = `
                             <td class="p-3 text-sm font-medium text-text-light">${aluno.nome}</td>
                             <td class="p-3">
@@ -170,13 +197,20 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(listaFrequencia),
                 });
+                
                 const result = await response.json();
-                if (!response.ok) throw new Error(result.error || 'Erro no servidor.');
-                alert(result.message);
+                
+                if (!response.ok) {
+                    const errorMessage = result.error || response.statusText || 'Erro desconhecido no servidor.';
+                    throw new Error(errorMessage);
+                }
+                
+                alert(result.message || 'Frequência salva com sucesso!');
                 datasRegistradas.push(data);
                 desabilitarFormularioAposSalvar();
             } catch (error) {
-                alert(`ERRO: ${error.message}`);
+                alert(`ERRO ao salvar frequência: ${error.message}`);
+                console.error("Detalhes do erro:", error);
             }
         }
 
