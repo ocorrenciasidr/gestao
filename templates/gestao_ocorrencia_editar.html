@@ -30,7 +30,7 @@ let numeroGlobal = null;
 document.addEventListener('DOMContentLoaded', () => {
     const params = new URLSearchParams(window.location.search);
     numeroGlobal = params.get('id') || params.get('numero');
-    const modo = params.get('modo') || 'visualizar'; // modo pode ser 'atendimento' ou 'visualizar'
+    const modo = params.get('modo') || 'visualizar';
 
     if (!numeroGlobal) {
         alert('Número da ocorrência não fornecido.');
@@ -44,7 +44,11 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         await salvarAtendimento();
     });
-    // A lógica de mostrar/esconder o botão voltar foi removida para mantê-lo sempre visível.
+
+    // mostra o botão voltar apenas se for visualizar
+    if (modo === 'visualizar') {
+        document.getElementById('btn-voltar-container').classList.remove('hidden');
+    }
 });
 
 function mostrarMensagem(texto, tipo = 'info') {
@@ -62,8 +66,13 @@ function mostrarMensagem(texto, tipo = 'info') {
 async function carregarDetalhes(numero, modo) {
     try {
         mostrarMensagem('Carregando detalhes...', 'info');
-        const resp = await fetch(`/api/ocorrencia_detalhes?numero=${encodeURIComponent(numero)}`);
-        if (!resp.ok) throw new Error('Falha ao carregar detalhes.');
+        // CORREÇÃO: Usando a rota de API correta que existe no app.py (/api/ocorrencias/<id>)
+        const resp = await fetch(`/api/ocorrencias/${encodeURIComponent(numero)}`);
+        
+        if (!resp.ok) {
+            const errorData = await resp.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Falha ao carregar detalhes.');
+        }
         const occ = await resp.json();
 
         // Preenche dados na tela
@@ -113,19 +122,17 @@ async function carregarDetalhes(numero, modo) {
             // Mostra o botão salvar
             document.getElementById('btn-salvar').classList.remove('hidden');
         } else {
-            // Modo 'visualizar'
             campos.forEach(id => {
                 const el = document.getElementById(id);
                 el.readOnly = true;
                 el.classList.add('input-readonly');
             });
-            // Esconde o botão salvar no modo visualizar
-            document.getElementById('btn-salvar').classList.add('hidden');
         }
 
         mostrarMensagem('Detalhes carregados', 'success');
     } catch (e) {
         console.error(e);
+        // Exibe a mensagem de erro da API
         mostrarMensagem('Erro ao carregar: ' + e.message, 'danger');
     }
 }
@@ -148,8 +155,9 @@ async function salvarAtendimento() {
 
         mostrarMensagem('Salvando atendimento...', 'info');
 
-        const payload = { numero: numeroGlobal, nivel: nivel, texto: texto };
-        const resp = await fetch('/api/registrar_atendimento', {
+        // A API espera um POST para /api/registrar_atendimento/<ocorrencia_id>
+        const payload = { nivel: nivel, texto_atendimento: texto }; 
+        const resp = await fetch(`/api/registrar_atendimento/${numeroGlobal}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -160,7 +168,6 @@ async function salvarAtendimento() {
 
         mostrarMensagem('Atendimento salvo com sucesso!', 'success');
 
-        // Redireciona para ocorrências abertas após salvar, conforme a regra.
         setTimeout(() => {
             window.location.href = '/gestao_ocorrencia_abertas';
         }, 1000);
@@ -202,11 +209,11 @@ async function salvarAtendimento() {
         <h1 class="text-xl sm:text-2xl text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
             SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR
         </h1><br>
-        <h2 class="text-base sm:text-lg text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
+        <h2 class="text-xl sm:text-2xl text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
             GESTÃO DE OCORRÊNCIAS - EDITAR OCORRÊNCIA
         </h2>
 
-        <div id="btn-voltar-container" class="">
+        <div id="btn-voltar-container" class="hidden">
             <button onclick="window.location.href='/gestao_ocorrencia'"
                     class="mt-4 px-4 py-2 text-sm font-medium rounded-lg text-gray-300 border border-gray-600 hover:bg-gray-700 transition duration-150 flex items-center mx-auto">
                 <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
