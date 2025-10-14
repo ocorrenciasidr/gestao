@@ -1113,7 +1113,39 @@ def api_vincular_tutor_aluno():
         logging.error(f"Erro ao vincular tutor/aluno: {e}")
         return jsonify({"error": f"Falha ao vincular tutor/aluno: {e}", "status": 500}), 500
 
+@app.route('/api/ocorrencia_detalhes')
+def ocorrencia_detalhes():
+    numero = request.args.get('numero')
+    if not numero:
+        return jsonify({'error': 'Número da ocorrência não fornecido'}), 400
+
+    try:
+        # Consulta ao Supabase na tabela de ocorrências
+        resp = supabase.table('ocorrencias').select('*').eq('numero', numero).single().execute()
+
+        if resp.data is None:
+            return jsonify({'error': 'Ocorrência não encontrada'}), 404
+
+        occ = resp.data
+
+        # Retorna os campos esperados pelo JS
+        return jsonify({
+            'numero': occ.get('numero'),
+            'aluno_nome': occ.get('aluno_nome'),
+            'sala_nome': occ.get('sala_nome'),
+            'tutor_nome': occ.get('tutor_nome'),
+            'status': occ.get('status'),
+            'descricao': occ.get('descricao'),
+            'atendimento_tutor': occ.get('atendimento_tutor'),
+            'atendimento_coordenacao': occ.get('atendimento_coordenacao'),
+            'atendimento_gestao': occ.get('atendimento_gestao')
+        })
+    except Exception as e:
+        return jsonify({'error': f'Erro ao consultar Supabase: {str(e)}'}), 500
+
+
 if __name__ == '__main__':
 
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
 
