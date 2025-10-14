@@ -658,36 +658,6 @@ def api_get_guia_aprendizagem():
     except Exception as e:
         return jsonify({"error": f"Erro ao buscar Guia de Aprendizagem: {e}", "status": 500}), 500
 
-@app.route("/api/registrar_atendimento/<int:ocorrencia_id>", methods=["POST"])
-def registrar_atendimento(ocorrencia_id):
-    try:
-        data = request.get_json()
-        nivel = data.get("nivel")
-        texto = data.get("texto_atendimento")
-        if not nivel or not texto:
-            return jsonify({"error": "Dados incompletos"}), 400
-        campos = {
-            "tutor": ("atendimento_tutor", "dt_atendimento_tutor"),
-            "coordenacao": ("atendimento_coordenacao", "dt_atendimento_coordenacao"),
-            "gestao": ("atendimento_gestao", "dt_atendimento_gestao"),
-        }
-        if nivel not in campos:
-            return jsonify({"error": "Nível inválido"}), 400
-        campo_texto, campo_data = campos[nivel]
-        agora = datetime.now().isoformat()
-        supabase.table("ocorrencias").update({
-            campo_texto: texto,
-            campo_data: agora
-        }).eq("numero", ocorrencia_id).execute()
-        result = supabase.table("ocorrencias").select("dt_atendimento_tutor, dt_atendimento_coordenacao, dt_atendimento_gestao").eq("numero", ocorrencia_id).single().execute()
-        if not result or not result.data:
-            return jsonify({"error": "Ocorrência não encontrada"}), 404
-        occ = result.data
-        if all([occ.get("dt_atendimento_tutor"), occ.get("dt_atendimento_coordenacao"), occ.get("dt_atendimento_gestao")]):
-            supabase.table("ocorrencias").update({"status": "FINALIZADA"}).eq("numero", ocorrencia_id).execute()
-        return jsonify({"success": True})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/cadastrar_sala', methods=['POST'])
 def api_cadastrar_sala():
@@ -1189,5 +1159,6 @@ def registrar_atendimento():
 if __name__ == '__main__':
 
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
 
 
