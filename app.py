@@ -1116,35 +1116,58 @@ def api_vincular_tutor_aluno():
 
 @app.route('/api/ocorrencia_detalhes')
 def ocorrencia_detalhes():
-    numero = request.args.get('numero')
-    if not numero:
-        return jsonify({'error': 'Número da ocorrência não fornecido'}), 400
-
     try:
-        # Consulta ao Supabase na tabela de ocorrências
-        resp = supabase.table('ocorrencias').select('*').eq('numero', numero).single().execute()
+        numero = request.args.get('numero')
+        if not numero:
+            return jsonify({'error': 'Número da ocorrência não fornecido'}), 400
 
-        if resp.data is None:
+        # Busca a ocorrência principal
+        dados = supabase.table('ocorrencias').select('*').eq('numero', numero).single().execute()
+        ocorrencia = dados.data
+
+        if not ocorrencia:
             return jsonify({'error': 'Ocorrência não encontrada'}), 404
 
-        occ = resp.data
+        # Inicializa nomes vazios
+        professor_nome = None
+        sala_nome = None
 
-        # Retorna os campos esperados pelo JS
-        return jsonify({
-            'numero': occ.get('numero'),
-            'aluno_nome': occ.get('aluno_nome'),
-            'sala_nome': occ.get('sala_nome'),
-            'tutor_nome': occ.get('tutor_nome'),
-            'status': occ.get('status'),
-            'descricao': occ.get('descricao'),
-            'atendimento_tutor': occ.get('atendimento_tutor'),
-            'atendimento_coordenacao': occ.get('atendimento_coordenacao'),
-            'atendimento_gestao': occ.get('atendimento_gestao')
-        })
+        # Busca o nome do professor (se tiver ID)
+        if ocorrencia.get('professor_id'):
+            prof = supabase.table('professores').select('nome').eq('id', ocorrencia['professor_id']).single().execute()
+            if prof.data:
+                professor_nome = prof.data['nome']
+
+        # Busca o nome da sala (se tiver ID)
+        if ocorrencia.get('sala_id'):
+            sala = supabase.table('salas').select('nome').eq('id', ocorrencia['sala_id']).single().execute()
+            if sala.data:
+                sala_nome = sala.data['nome']
+
+        # Monta resposta completa com nomes legíveis
+        resposta = {
+            'numero': ocorrencia.get('numero'),
+            'aluno_nome': ocorrencia.get('aluno_nome'),
+            'descricao': ocorrencia.get('descricao'),
+            'status': ocorrencia.get('status'),
+            'atendimento_professor': ocorrencia.get('atendimento_professor'),
+            'atendimento_tutor': ocorrencia.get('atendimento_tutor'),
+            'atendimento_coordenacao': ocorrencia.get('atendimento_coordenacao'),
+            'atendimento_gestao': ocorrencia.get('atendimento_gestao'),
+            'tutor_nome': ocorrencia.get('tutor_nome'),
+            'professor_nome': professor_nome,
+            'sala_nome': sala_nome
+        }
+
+        return jsonify(resposta)
+
     except Exception as e:
-        return jsonify({'error': f'Erro ao consultar Supabase: {str(e)}'}), 500
+        print('Erro ao buscar detalhes da ocorrência:', e)
+        return jsonify({'error': str(e)}), 500
+
 
 
 if __name__ == '__main__':
 
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
