@@ -1136,19 +1136,19 @@ def api_vincular_tutor_aluno():
 
 # Insira este trecho no seu app.py após a função api_datas_registradas, por exemplo.
 
+# CÓDIGO CORRIGIDO para app.py (api_get_frequencia_detalhes)
 @app.route('/api/frequencia/detalhes/<int:salaId>/<dataSelecionada>', methods=['GET'])
 def api_get_frequencia_detalhes(salaId, dataSelecionada):
     try:
         # 1. Buscar a frequência registrada (status) para a data e sala
-        # Select: fk_aluno_id, status. Filter: salaId e dataSelecionada.
         response = supabase.table('f_frequencia').select(
             "fk_aluno_id, status"
         ).eq('fk_sala_id', salaId).eq('data', dataSelecionada).execute()
         
         frequencia_raw = handle_supabase_response(response)
         
-        # Mapear status por aluno_id
-        status_dict = {item['fk_aluno_id']: item['status'] for item in frequencia_raw}
+        # CORREÇÃO 1: Mapear status, garantindo que a chave do dicionário (o ID) seja uma STRING.
+        status_dict = {str(item['fk_aluno_id']): item['status'] for item in frequencia_raw}
 
         # 2. Buscar todos os alunos da sala
         alunos_resp = supabase.table('d_alunos').select('id, nome').eq('sala_id', salaId).order('nome').execute()
@@ -1157,12 +1157,14 @@ def api_get_frequencia_detalhes(salaId, dataSelecionada):
         # 3. Combinar e formatar o resultado
         registros_detalhes = []
         for aluno in alunos_raw:
-            aluno_id = aluno['id']
-            # Usa o status encontrado, se não, assume 'P' (Presença) por segurança
-            status = status_dict.get(aluno_id, 'P')
-
+            # CORREÇÃO 2: Garantir que o ID do aluno, usado para o lookup, seja uma STRING.
+            aluno_id_str = str(aluno['id']) 
+            
+            # Tenta buscar o status usando a chave STRING
+            status = status_dict.get(aluno_id_str, 'P') # Assume 'P' se o registro não for encontrado
+            
             registros_detalhes.append({
-                "aluno_id": str(aluno_id),
+                "aluno_id": aluno_id_str, # O frontend espera o ID como string
                 "nome": aluno['nome'],
                 "status": status,
             })
@@ -1171,7 +1173,8 @@ def api_get_frequencia_detalhes(salaId, dataSelecionada):
 
     except Exception as e:
         logging.error(f"Erro ao buscar detalhes de frequência para edição: {e}")
+        # Retorna um 500 com a mensagem de erro detalhada
         return jsonify({'error': f"Erro interno do servidor ao carregar frequência para edição: {e}"}), 500
-
 if __name__ == '__main__':
+
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
