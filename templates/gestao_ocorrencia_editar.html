@@ -4,11 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Editar Ocorrência</title>
-
 <script src="https://cdn.tailwindcss.com"></script>
 
 <script>
-// Tema Tailwind
 tailwind.config = {
     theme: {
         extend: {
@@ -41,18 +39,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     carregarDetalhes(numeroGlobal, modo);
 
+    // evento de salvar
     document.getElementById('form-atendimento').addEventListener('submit', async (e) => {
         e.preventDefault();
         await salvarAtendimento();
     });
 
-    // Exibe botão voltar só no modo visualizar
+    // mostra o botão voltar apenas se for visualizar
     if (modo === 'visualizar') {
         document.getElementById('btn-voltar-container').classList.remove('hidden');
     }
 });
 
-// Exibe mensagens de status
 function mostrarMensagem(texto, tipo = 'info') {
     const msgEl = document.getElementById('mensagem-status');
     msgEl.textContent = texto;
@@ -65,7 +63,6 @@ function mostrarMensagem(texto, tipo = 'info') {
     setTimeout(() => msgEl.classList.add('hidden'), 4000);
 }
 
-// Carrega dados da ocorrência
 async function carregarDetalhes(numero, modo) {
     try {
         mostrarMensagem('Carregando detalhes...', 'info');
@@ -73,27 +70,36 @@ async function carregarDetalhes(numero, modo) {
         if (!resp.ok) throw new Error('Falha ao carregar detalhes.');
         const occ = await resp.json();
 
-        document.getElementById('numero').textContent = occ.numero;
-        document.getElementById('aluno').textContent = occ.aluno_nome || '';
-        document.getElementById('sala').textContent = occ.sala_nome || '';
-        document.getElementById('tutor').textContent = occ.tutor_nome || '';
-        document.getElementById('professor').textContent = occ.professor_nome || '';
-        document.getElementById('status').textContent = occ.status || '';
+        // Preenche dados na tela
+        document.getElementById('numero').textContent = occ.numero || '';
+        document.getElementById('aluno').textContent = occ.aluno_nome || '—';
+        document.getElementById('sala').textContent = occ.sala_nome || '—';
+        document.getElementById('tutor').textContent = occ.tutor_nome || '—';
+        document.getElementById('professor').textContent = occ.professor_nome || '—';
+        document.getElementById('status').textContent = occ.status || '—';
+
         document.getElementById('descricao').value = occ.descricao || '';
         document.getElementById('atendimento_professor').value = occ.atendimento_professor || '';
         document.getElementById('atendimento_tutor').value = occ.atendimento_tutor || '';
         document.getElementById('atendimento_coordenacao').value = occ.atendimento_coordenacao || '';
         document.getElementById('atendimento_gestao').value = occ.atendimento_gestao || '';
 
-        // Define campos editáveis conforme modo/nivel
+        // Ajusta campos editáveis
+        const campos = [
+            'descricao',
+            'atendimento_professor',
+            'atendimento_tutor',
+            'atendimento_coordenacao',
+            'atendimento_gestao'
+        ];
+
         if (modo === 'atendimento') {
             const nivel = (new URLSearchParams(window.location.search)).get('nivel');
-            ['atendimento_professor', 'atendimento_tutor', 'atendimento_coordenacao', 'atendimento_gestao']
-                .forEach(id => {
-                    const el = document.getElementById(id);
-                    el.readOnly = true;
-                    el.classList.add('input-readonly');
-                });
+            campos.forEach(id => {
+                const el = document.getElementById(id);
+                el.readOnly = true;
+                el.classList.add('input-readonly');
+            });
 
             if (nivel) {
                 const mapa = {
@@ -107,9 +113,12 @@ async function carregarDetalhes(numero, modo) {
                 campo.classList.remove('input-readonly');
                 campo.focus();
             }
+
+            // Mostra o botão salvar
             document.getElementById('btn-salvar').classList.remove('hidden');
         } else {
-            document.querySelectorAll('textarea').forEach(el => {
+            campos.forEach(id => {
+                const el = document.getElementById(id);
                 el.readOnly = true;
                 el.classList.add('input-readonly');
             });
@@ -122,12 +131,11 @@ async function carregarDetalhes(numero, modo) {
     }
 }
 
-// Envia o atendimento
 async function salvarAtendimento() {
     try {
         const params = new URLSearchParams(window.location.search);
         const nivel = params.get('nivel');
-        if (!nivel) { mostrarMensagem('Nível não informado', 'danger'); return; }
+        if (!nivel) return mostrarMensagem('Nível não informado', 'danger');
 
         const mapa = {
             professor: 'atendimento_professor',
@@ -135,8 +143,9 @@ async function salvarAtendimento() {
             coordenacao: 'atendimento_coordenacao',
             gestao: 'atendimento_gestao'
         };
+
         const texto = document.getElementById(mapa[nivel]).value.trim();
-        if (!texto) { mostrarMensagem('Preencha o atendimento antes de salvar', 'danger'); return; }
+        if (!texto) return mostrarMensagem('Preencha o atendimento antes de salvar', 'danger');
 
         mostrarMensagem('Salvando atendimento...', 'info');
 
@@ -209,6 +218,7 @@ async function salvarAtendimento() {
         </div>
     </header>
 
+    <!-- Conteúdo -->
     <main class="w-full max-w-4xl flex-grow flex justify-center">
         <div class="card w-full p-6 md:p-8 bg-dark-secondary rounded-xl shadow-2xl mb-8">
             <div id="mensagem-status" class="hidden p-3 mb-4 text-sm font-medium text-white rounded-lg" role="alert"></div>
