@@ -1165,9 +1165,29 @@ def ocorrencia_detalhes():
         print('Erro ao buscar detalhes da ocorrência:', e)
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/registrar_atendimento', methods=['POST'])
+def registrar_atendimento():
+    try:
+        dados = request.get_json()
+        numero = dados.get('numero')
+        nivel = dados.get('nivel')
+        texto = dados.get('texto')
+
+        if not numero or not nivel or not texto:
+            return jsonify({'error': 'Campos obrigatórios ausentes'}), 400
+
+        campo = f'atendimento_{nivel}'
+        supabase.table('ocorrencias').update({campo: texto}).eq('numero', numero).execute()
+
+        return jsonify({'success': True, 'message': 'Atendimento salvo com sucesso'})
+
+    except Exception as e:
+        print('Erro ao registrar atendimento:', e)
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
 
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
 
