@@ -288,10 +288,10 @@ def api_get_funcionarios():
 
 # ROTA 3: API GET — Listagem de Alunos por Sala (usando d_funcionarios direto)
 @app.route('/api/alunos_por_sala/<sala_id>', methods=['GET'])
-def api_get_alunos_por_sala(sala_id):
+def api_alunos_por_sala(sala_id):
     """
-    Retorna todos os alunos de uma sala,
-    incluindo o nome do tutor (da tabela d_funcionarios).
+    Retorna todos os alunos da sala informada,
+    incluindo o nome do tutor vinculado (da tabela d_funcionarios).
     """
     try:
         sala_id_bigint = int(sala_id)
@@ -304,23 +304,21 @@ def api_get_alunos_por_sala(sala_id):
             .order('nome', desc=False)
             .execute()
         )
+        alunos_raw = response_alunos.data if hasattr(response_alunos, "data") else []
 
-        # Nova API Supabase: os dados estão em .data
-        alunos_raw = response_alunos.data if response_alunos.data else []
-
-        # 2️⃣ Buscar todos os tutores (funcionários marcados como tutor)
+        # 2️⃣ Buscar todos os tutores
         response_tutores = (
             supabase.table('d_funcionarios')
             .select('id, nome')
             .eq('is_tutor', True)
             .execute()
         )
-        tutores_raw = response_tutores.data if response_tutores.data else []
+        tutores_raw = response_tutores.data if hasattr(response_tutores, "data") else []
 
         # 3️⃣ Criar dicionário { id_tutor: nome_tutor }
         tutores_dict = {str(t['id']): t['nome'] for t in tutores_raw}
 
-        # 4️⃣ Montar o JSON final (alunos + nome do tutor)
+        # 4️⃣ Montar lista de alunos com nome do tutor
         alunos = []
         for a in alunos_raw:
             tutor_id_str = str(a.get('tutor_id')) if a.get('tutor_id') else None
@@ -333,7 +331,6 @@ def api_get_alunos_por_sala(sala_id):
                 "tutor_nome": tutor_nome
             })
 
-        # Retorna JSON direto para o JavaScript preencher
         return jsonify(alunos), 200
 
     except Exception as e:
@@ -1859,6 +1856,7 @@ def datas_registradas_por_sala(sala_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
