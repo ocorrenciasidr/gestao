@@ -211,7 +211,7 @@ def gestao_cadastro_vincular_disciplina_sala():
 
 @app.route('/api/salas', methods=['GET'])
 def api_get_salas():
-	    try:
+    try:
         response = supabase.table('d_salas').select('id, sala, nivel_ensino').order('sala').execute()
         salas = [{"id": str(s['id']), "nome": f"{s['sala']} ({s['nivel_ensino']})", "nivel_ensino": s['nivel_ensino']} for s in handle_supabase_response(response)]
         return jsonify(salas)
@@ -1178,3 +1178,4 @@ def api_get_frequencia_detalhes(salaId, dataSelecionada):
 if __name__ == '__main__':
 
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
