@@ -291,55 +291,54 @@ def api_get_funcionarios():
 def api_get_alunos_por_sala(sala_id):
     """
     Retorna todos os alunos de uma sala,
-    incluindo o nome do tutor (d_funcionarios),
-    usando a relação direta tutor_id -> d_funcionarios.id.
-    CORREÇÃO APLICADA: Usa 'sala_id' e 'tutor_id' para corresponder ao esquema do usuário.
+    incluindo o nome do tutor (da tabela d_funcionarios).
     """
     try:
         sala_id_bigint = int(sala_id)
 
-        # 1️⃣ Busca os alunos da sala
-        # CORREÇÃO: Usando 'sala_id' no filtro e 'tutor_id' na seleção
+        # 1️⃣ Buscar alunos da sala
         response_alunos = (
             supabase.table('d_alunos')
-            .select('id, nome, tutor_id') 
+            .select('id, nome, tutor_id')
             .eq('sala_id', sala_id_bigint)
-            .order('nome')
+            .order('nome', desc=False)
             .execute()
         )
-        alunos_raw = handle_supabase_response(response_alunos)
 
-        # 2️⃣ Busca todos os funcionários marcados como tutor
+        # Nova API Supabase: os dados estão em .data
+        alunos_raw = response_alunos.data if response_alunos.data else []
+
+        # 2️⃣ Buscar todos os tutores (funcionários marcados como tutor)
         response_tutores = (
             supabase.table('d_funcionarios')
             .select('id, nome')
             .eq('is_tutor', True)
             .execute()
         )
-        tutores_raw = handle_supabase_response(response_tutores)
+        tutores_raw = response_tutores.data if response_tutores.data else []
 
-        # 3️⃣ Cria um dicionário { id_tutor: nome_tutor }
+        # 3️⃣ Criar dicionário { id_tutor: nome_tutor }
         tutores_dict = {str(t['id']): t['nome'] for t in tutores_raw}
 
-        # 4️⃣ Monta o JSON final combinando aluno + tutor
+        # 4️⃣ Montar o JSON final (alunos + nome do tutor)
         alunos = []
         for a in alunos_raw:
-            # CORREÇÃO: Usando 'tutor_id' para buscar o ID do tutor
-            tutor_id_str = str(a['tutor_id']) if a.get('tutor_id') else None
+            tutor_id_str = str(a.get('tutor_id')) if a.get('tutor_id') else None
             tutor_nome = tutores_dict.get(tutor_id_str, 'Tutor Não Definido')
+
             alunos.append({
                 "id": str(a['id']),
-                "nome": a['nome'],
-                "tutor_id": tutor_id_str, 
+                "nome": a.get('nome', 'Sem nome'),
+                "tutor_id": tutor_id_str,
                 "tutor_nome": tutor_nome
             })
 
-        return jsonify(alunos)
+        # Retorna JSON direto para o JavaScript preencher
+        return jsonify(alunos), 200
 
     except Exception as e:
         logging.error(f"Erro ao buscar alunos por sala: {e}")
-        return jsonify({"error": f"Erro ao buscar alunos por sala: {e}", "status": 500}), 500
-
+        return jsonify({"error": f"Erro ao buscar alunos por sala: {str(e)}"}), 500
 
 # ROTA 3.1: API GET — Lista de Tutores (funcionários com is_tutor = True)
 @app.route('/api/tutores', methods=['GET'])
@@ -1860,6 +1859,7 @@ def datas_registradas_por_sala(sala_id):
 if __name__ == '__main__':
     # Você precisa rodar esta aplicação no terminal com 'python app.py'
     app.run(debug=True)
+
 
 
 
