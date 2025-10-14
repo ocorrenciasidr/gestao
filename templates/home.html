@@ -3,23 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR - Menu Principal</title>
+    <title>SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-        // Configuração personalizada do Tailwind
+        // Configuração personalizada do Tailwind para um tema escuro profissional
         tailwind.config = {
             theme: {
                 extend: {
                     colors: {
-                        'dark-primary': '#0F172A', // Fundo Principal
-                        'dark-secondary': '#1E293B', // Fundo dos Containers
-                        'dark-nav': '#1F2937', // Fundo da Navegação Lateral (Gray 800)
-                        // Cores Padronizadas
-                        'accent': '#0D9488', // Teal 600 (Ocorrência/Relatório)
-                        'info': '#4F46E5', // Indigo 600 (Frequência/Tutoria)
-                        'danger': '#F97316', // Orange 600 (Tecnologia/Cadastro)
-                        'warning': '#7C3AED', // Violet 600 (Aulas/Configuração)
-                        'text-light': '#F8FAFC', // Texto Claro
+                        'dark-primary': '#0F172A', // Slate 900
+                        'dark-secondary': '#1E293B', // Slate 800
+                        // Cores mais vibrantes/claras para os botões:
+                        'accent': '#34D399', // Emerald 400 (Verde Claro)
+                        'info': '#60A5FA', // Blue 400 (Azul Claro)
+                        'danger': '#F87171', // Red 400 (Vermelho Claro)
+                        'warning': '#FACC15', // Yellow 400 (Amarelo Claro)
+                        'text-light': '#F8FAFC', // Slate 50
                     },
                     fontFamily: {
                         sans: ['Inter', 'sans-serif'],
@@ -27,214 +26,81 @@
                 }
             }
         }
-
-        function toggleAccordion(moduleId) {
-            const content = document.getElementById(moduleId);
-            const icon = document.getElementById(`icon-${moduleId}`);
-            
-            // Fecha todos os outros acordeões
-            document.querySelectorAll('.accordion-content').forEach(item => {
-                if (item.id !== moduleId) {
-                    item.classList.add('hidden');
-                    item.closest('.accordion-item').querySelector('.accordion-icon').classList.remove('rotate-90');
-                }
-            });
-
-            // Alterna o acordeão clicado
-            content.classList.toggle('hidden');
-            icon.classList.toggle('rotate-90');
-        }
-
     </script>
     <style>
+        /* Estilo para garantir que o corpo ocupe toda a altura da tela */
         html, body {
             height: 100%;
         }
+        /* Estilo para centralizar o conteúdo verticalmente */
         #app-container {
             min-height: 100vh;
-        }
-        /* Estilo para envolver cada módulo e dar espaçamento */
-        .accordion-item {
-             @apply my-4 rounded-lg shadow-xl border border-gray-700 bg-dark-secondary;
-        }
-        /* Estilo dos botões principais do acordeão (Header) */
-        .sidebar-accordion-header {
-             @apply flex justify-between items-center w-full py-3 px-4 text-lg font-semibold transition duration-200 ease-in-out rounded-lg text-white cursor-pointer;
-        }
-        /* Estilo para os links internos (Sub-opções) */
-        .submenu-link {
-            /* Garante quebra de linha (block), altura (py-2.5) e espaçamento vertical (my-1.5) */
-            @apply block py-2.5 px-6 ml-2 text-sm font-medium transition duration-150 ease-in-out rounded-lg my-1.5 bg-gray-800 text-gray-300;
-        }
-        .accordion-content {
-            /* Apenas padding leve, o espaco vem do link */
-            @apply px-2 pb-2 mb-1 space-y-1; 
-        }
-        .accordion-icon {
-            transition: transform 0.2s;
         }
     </style>
 </head>
 <body class="bg-dark-primary font-sans text-text-light">
     
-    <div id="app-container" class="flex">
+    <div id="app-container" class="flex flex-col items-center justify-between p-4 md:p-8">
 
-        <nav class="w-72 bg-dark-nav h-screen sticky top-0 p-4 flex flex-col justify-start space-y-1 shadow-2xl overflow-y-auto">
-            
-            <h2 class="text-xl font-bold text-accent mb-2 mt-2 border-b border-gray-700 pb-2">
-                MENU SGCE
+        <header class="w-full text-center mb-8 mt-4">
+            <h1 class="text-xl sm:text-2xl text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
+                SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR
+            </h1><br>
+            <h2 class="text-xl sm:text-2xl text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
+                MENU PRINCIPAL
             </h2>
+        </header>
 
-            <div class="space-y-4"> 
+        <main class="w-full max-w-4xl flex-grow flex items-start justify-center">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full p-4 sm:p-6 bg-dark-secondary rounded-xl shadow-2xl">
                 
-                <div class="accordion-item">
-                    <div onclick="toggleAccordion('ocorrencia-content')" 
-                         class="sidebar-accordion-header bg-accent hover:bg-teal-700">
-                        GESTÃO DE OCORRÊNCIA
-                        <svg id="icon-ocorrencia-content" class="accordion-icon w-5 h-5 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                    </div>
-                    <div id="ocorrencia-content" class="accordion-content hidden">
-                        <a href="/gestao_ocorrencia_nova" class="submenu-link hover:bg-teal-800 hover:text-accent">Nova Ocorrência</a><br>
-                        <a href="/gestao_ocorrencia_abertas" class="submenu-link hover:bg-teal-800 hover:text-accent">Ocorrências Abertas</a><br>
-                        <a href="/gestao_ocorrencia_finalizadas" class="submenu-link hover:bg-teal-800 hover:text-accent">Histórico Finalizado</a>
-                    </div>
-                </div>
+                <button onclick="window.location.href='/gestao_ocorrencia'" 
+                        class="p-5 text-xl font-semibold bg-accent hover:bg-emerald-500 transition duration-200 ease-in-out rounded-lg shadow-lg transform hover:scale-[1.02] text-white">
+                    GESTÃO DE OCORRÊNCIA
+                </button>
+                <button onclick="window.location.href='/gestao_relatorio'" 
+                        class="p-5 text-xl font-semibold bg-accent hover:bg-emerald-500 transition duration-200 ease-in-out rounded-lg shadow-lg transform hover:scale-[1.02] text-white">
+                    GESTÃO DE RELATÓRIOS
+                </button>
 
-                <div class="accordion-item">
-                    <div onclick="toggleAccordion('relatorios-content')" 
-                         class="sidebar-accordion-header bg-accent hover:bg-teal-700">
-                        GESTÃO DE RELATÓRIOS
-                        <svg id="icon-relatorios-content" class="accordion-icon w-5 h-5 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                    </div>
-                    <div id="relatorios-content" class="accordion-content hidden">
-                         <a href="/gestao_relatorio_impressao" class="submenu-link hover:bg-teal-800 hover:text-accent">Impressão Ocorrências</a><br>
-                        <a href="/gestao_relatorio_frequencia" class="submenu-link hover:bg-teal-800 hover:text-accent">Relatório de Frequência</a><br>
-                        <a href="/gestao_relatorio_estatistico" class="submenu-link hover:bg-teal-800 hover:text-accent">Relatório Estatístico</a><br>
-                        <a href="/gestao_relatorio_tutoria" class="submenu-link hover:bg-teal-800 hover:text-accent">Relatório de Tutoria</a>
-                    </div>
-                </div>
+                <button onclick="window.location.href='/gestao_frequencia'" 
+                        class="p-5 text-xl font-semibold bg-info hover:bg-blue-500 transition duration-200 ease-in-out rounded-lg shadow-lg transform hover:scale-[1.02] text-white">
+                    GESTÃO DE FREQUÊNCIA
+                </button>
+                <button onclick="window.location.href='/gestao_tutoria'" 
+                        class="p-5 text-xl font-semibold bg-info hover:bg-blue-500 transition duration-200 ease-in-out rounded-lg shadow-lg transform hover:scale-[1.02] text-white">
+                    GESTÃO DE TUTORIA
+                </button>
                 
-                <div class="accordion-item">
-                    <div onclick="toggleAccordion('frequencia-content')" 
-                         class="sidebar-accordion-header bg-info hover:bg-indigo-700">
-                        GESTÃO DE FREQUÊNCIA
-                        <svg id="icon-frequencia-content" class="accordion-icon w-5 h-5 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                    </div>
-                    <div id="frequencia-content" class="accordion-content hidden">
-                        <a href="/gestao_frequencia_registro" class="submenu-link hover:bg-indigo-800 hover:text-info">Registro de Aula</a><br>
-                        <a href="/gestao_frequencia_atraso" class="submenu-link hover:bg-indigo-800 hover:text-info">Registro de Atraso</a><br>
-                        <a href="/gestao_frequencia_saida" class="submenu-link hover:bg-indigo-800 hover:text-info">Registro de Saída</a>
-                    </div>
-                </div>
+                <button onclick="window.location.href='/gestao_tecnologia'" 
+                        class="p-5 text-xl font-semibold bg-danger hover:bg-red-500 transition duration-200 ease-in-out rounded-lg shadow-lg transform hover:scale-[1.02] text-white">
+                    GESTÃO DE TECNOLOGIA
+                </button>
+                <button onclick="window.location.href='/gestao_cadastro'" 
+                        class="p-5 text-xl font-semibold bg-danger hover:bg-red-500 transition duration-200 ease-in-out rounded-lg shadow-lg transform hover:scale-[1.02] text-white">
+                    CADASTRO
+                </button>
 
-                <div class="accordion-item">
-                    <div onclick="toggleAccordion('tutoria-content')" 
-                         class="sidebar-accordion-header bg-info hover:bg-indigo-700">
-                        GESTÃO DE TUTORIA
-                        <svg id="icon-tutoria-content" class="accordion-icon w-5 h-5 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                    </div>
-                    <div id="tutoria-content" class="accordion-content hidden">
-                         <a href="/gestao_tutoria_ficha" class="submenu-link hover:bg-indigo-800 hover:text-info">Ficha de Tutoria</a><br>
-                        <a href="/gestao_tutoria_agendamento" class="submenu-link hover:bg-indigo-800 hover:text-info">Agendamento de Tutoria</a><br>
-                        <a href="/gestao_tutoria_registro" class="submenu-link hover:bg-indigo-800 hover:text-info">Registro de Atendimento</a><br>
-                        <a href="/gestao_tutoria_notas" class="submenu-link hover:bg-indigo-800 hover:text-info">Lançamento de Notas</a>
-                    </div>
-                </div>
-                
-                <div class="accordion-item">
-                    <div onclick="toggleAccordion('tecnologia-content')" 
-                         class="sidebar-accordion-header bg-danger hover:bg-orange-700">
-                        GESTÃO DE TECNOLOGIA
-                        <svg id="icon-tecnologia-content" class="accordion-icon w-5 h-5 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                    </div>
-                    <div id="tecnologia-content" class="accordion-content hidden">
-                        <a href="/gestao_tecnologia_agendamento" class="submenu-link hover:bg-orange-800 hover:text-danger">Agendamento</a><br>
-                        <a href="/gestao_tecnologia_retirada" class="submenu-link hover:bg-orange-800 hover:text-danger">Retirada/Devolução</a><br>
-                        <a href="/gestao_tecnologia_historico" class="submenu-link hover:bg-orange-800 hover:text-danger">Histórico de Uso</a><br>
-                        <a href="/gestao_tecnologia_ocorrencia" class="submenu-link hover:bg-orange-800 hover:text-danger">Ocorrência de Equipamento</a>
-                    </div>
-                </div>
+		<button onclick="window.location.href='/gestao_aulas'" 
+                        class="p-5 text-xl font-semibold bg-warning hover:bg-yellow-500 transition duration-200 ease-in-out rounded-lg shadow-lg transform hover:scale-[1.02] text-white">
+                    GESTÃO DE AULAS
+                </button>
+                <button onclick="window.location.href='/gestao_configuracoes'" 
+                        class="p-5 text-xl font-semibold bg-warning hover:bg-yellow-500 transition duration-200 ease-in-out rounded-lg shadow-lg transform hover:scale-[1.02] text-white">
+                    CONFIGURAÇÃO
+                </button>
 
-                <div class="accordion-item">
-                    <div onclick="toggleAccordion('cadastro-content')" 
-                         class="sidebar-accordion-header bg-danger hover:bg-orange-700">
-                        CADASTRO
-                        <svg id="icon-cadastro-content" class="accordion-icon w-5 h-5 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                    </div>
-                    <div id="cadastro-content" class="accordion-content hidden">
-                        <a href="/gestao_cadastro_alunos" class="submenu-link hover:bg-orange-800 hover:text-danger">Alunos</a><br>
-                        <a href="/gestao_cadastro_professores" class="submenu-link hover:bg-orange-800 hover:text-danger">Professores</a><br>
-                        <a href="/gestao_cadastro_salas" class="submenu-link hover:bg-orange-800 hover:text-danger">Salas</a><br>
-                        <a href="/gestao_cadastro_clubes" class="submenu-link hover:bg-orange-800 hover:text-danger">Clube Juvenil</a><br>
-                        <a href="/gestao_cadastro_eletivas" class="submenu-link hover:bg-orange-800 hover:text-danger">Eletivas</a><br>
-                        <a href="/gestao_cadastro_disciplinas" class="submenu-link hover:bg-orange-800 hover:text-danger">Disciplinas</a><br>
-                        <a href="/gestao_cadastro_equipamentos" class="submenu-link hover:bg-orange-800 hover:text-danger">Equipamentos</a><br>
-                        <a href="/gestao_cadastro_vincular_tutor_aluno" class="submenu-link hover:bg-orange-800 hover:text-danger">Vincular Aluno / Tutor</a><br>
-                        <a href="/gestao_cadastro_vincular_disciplina_sala" class="submenu-link hover:bg-orange-800 hover:text-danger">Vincular Disciplina / Sala</a><br>
-                        <a href="/gestao_cadastro_vinculacao_aula_nivel" class="submenu-link hover:bg-orange-800 hover:text-danger">Vincular Aula / Nível</a>
-                    </div>
-                </div>
-
-		        <div class="accordion-item">
-                    <div onclick="toggleAccordion('aulas-content')" 
-                         class="sidebar-accordion-header bg-warning hover:bg-violet-700">
-                        GESTÃO DE AULAS
-                        <svg id="icon-aulas-content" class="accordion-icon w-5 h-5 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                    </div>
-                    <div id="aulas-content" class="accordion-content hidden">
-                        <a href="/gestao_agenda" class="submenu-link hover:bg-violet-800 hover:text-warning">Agenda Semanal</a><br>
-                        <a href="/gestao_plano_aula" class="submenu-link hover:bg-violet-800 hover:text-warning">Plano de Aula</a><br>
-                        <a href="/gestao_guia_aprendizagem" class="submenu-link hover:bg-violet-800 hover:text-warning">Guia de Aprendizagem Bimestral</a><br>
-                        <a href="/gestao_validacao_documentos" class="submenu-link hover:bg-violet-800 hover:text-warning">Validação de Documentos</a>
-                    </div>
-                </div>
-
-                <div class="accordion-item">
-                    <div onclick="toggleAccordion('configuracoes-content')" 
-                         class="sidebar-accordion-header bg-warning hover:bg-violet-700">
-                        CONFIGURAÇÃO
-                        <svg id="icon-configuracoes-content" class="accordion-icon w-5 h-5 transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                    </div>
-                    <div id="configuracoes-content" class="accordion-content hidden">
-                        <a href="/gestao_configuracoes_sistema" class="submenu-link hover:bg-violet-800 hover:text-warning">Configurar Sistema</a><br>
-                        <a href="/gestao_configuracoes_fluxo" class="submenu-link hover:bg-violet-800 hover:text-warning">Configurar Fluxo</a>
-                    </div>
-                </div>
-                
             </div>
-            
-            <a href="/logout" class="sidebar-accordion-header bg-gray-700 hover:bg-gray-600 mt-4">SAIR</a>
-        </nav>
+        </main>
 
-        <div class="flex-1 flex flex-col items-center justify-between p-4 md:p-8">
-
-            <header class="w-full text-center mb-16 mt-4">
-                <h1 class="text-xl sm:text-2xl font-extrabold text-gray-400 leading-tight tracking-wider">
-                    SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR
-                </h1>
-                <h2 class="text-xl sm:text-2xl text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
-                    PAINEL PRINCIPAL
-                </h2>
-            </header>
-
-            <main class="w-full max-w-4xl flex-grow flex items-center justify-center">
-                <div class="p-8 bg-dark-secondary rounded-xl shadow-lg text-center">
-                    <h3 class="text-3xl font-bold text-accent">Bem-vindo(a) ao Sistema SGCE</h3>
-                    <p class="text-gray-400 mt-4 text-lg">
-                        Use o menu lateral para navegar entre os módulos do sistema.
-                    </p>
-                </div>
-            </main>
-
-            <footer class="w-full text-center mt-10 p-4 text-gray-400 text-sm border-t border-gray-800">
-                <p class="mb-1 text-base font-medium">
-                    DESENVOLVEDOR: MARCELO ANDRÉ NOGUEIRA CARDES
-                </p>
-                <p class="text-xs font-light tracking-wide">
-                    LICENCIADO COMO TESTE PARA E.E. PEI PROFESSORA IRENE DIAS RIBEIRO
-                </p>
-            </footer>
-        </div>
+        <footer class="w-full text-center mt-10 p-4 text-gray-400 text-sm border-t border-gray-800">
+            <p class="mb-1 text-base font-medium">
+                DESENVOLVEDOR: MARCELO ANDRÉ NOGUEIRA CARDES
+            </p>
+            <p class="text-xs font-light tracking-wide">
+                LICENCIADO COMO TESTE PARA E.E. PEI PROFESSORA IRENE DIAS RIBEIRO
+            </p>
+        </footer>
 
     </div>
 
