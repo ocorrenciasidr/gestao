@@ -5,6 +5,14 @@ from flask import Flask, render_template, request, jsonify
 from supabase import create_client, Client
 import json
 from datetime import datetime
+from flask import send_file
+from io import BytesIO
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import cm
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+from reportlab.pdfbase import pdfmetrics
 
 logging.basicConfig(level=logging.INFO)
 load_dotenv()
@@ -1233,9 +1241,85 @@ def ocorrencia_detalhes():
         print('Erro em /api/ocorrencia_detalhes:', e)
         return jsonify({'error': str(e)}), 500
 
+pdfmetrics.registerFont(UnicodeCIDFont('HeiseiMin-W3'))  # compatível com português
+
+@app.route('/api/salas_com_ocorrencias')
+def salas_com_ocorrencias():
+    try:
+        r = supabase.table("ocorrencias").select("sala_id, d_salas(sala)").neq("sala_id", None).execute()
+        salas = []
+        for item in r.data:
+            sala_nome = item.get('d_salas', {}).get('sala')
+            if sala_nome and item['sala_id'] not in [s['id'] for s in salas]:
+                salas.append({"id": item['sala_id'], "nome": sala_nome})
+        return jsonify(salas)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/alunos_por_sala_ocorrencias/<int:sala_id>')
+def alunos_por_sala_ocorrencias(sala_id):
+    try:
+        r = supabase.table("ocorrencias").select("aluno_id, aluno_nome").eq("sala_id", sala_id).execute()
+        alunos = []
+        for item in r.data:
+            if item["aluno_id"] not in [a["id"] for a in alunos]:
+                alunos.append({"id": item["aluno_id"], "nome": item["aluno_nome"]})
+        return jsonify(alunos)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/ocorrencias_por_aluno/<int:aluno_id>')
+def ocorrencias_por_aluno(aluno_id):
+    try:
+        r = supabase.table("ocorrencias").select("*").eq("aluno_id", aluno_id).order("data_hora", desc=True).execute()
+        return jsonify(r.data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/gerar_pdf_ocorrencias', methods=['POST'])
+def gerar_pdf_ocorrencias():
+    try:
+        data = request.get_json()
+        numeros = data.get("numeros", [])
+        if not numeros:
+            return jsonify({"error": "Nenhuma ocorrência selecionada"}), 400
+
+        ocorrs = supabase.table("ocorrencias").select("*").in_("numero", numeros).execute().data
+
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=2*cm, bottomMargin=2*cm)
+        styles = getSampleStyleSheet()
+        story = []
+
+        for o in ocorrs:
+            story.append(Paragraph(f"<b>Ocorrência Nº {o['numero']}</b>", styles["Heading3"]))
+            story.append(Paragraph(f"Data/Hora: {o.get('data_hora', '')}", styles["Normal"]))
+            story.append(Paragraph(f"Aluno: {o.get('aluno_nome', '')}", styles["Normal"]))
+            story.append(Paragraph(f"Sala: {o.get('sala_id', '')}", styles["Normal"]))
+            story.append(Spacer(1, 0.3*cm))
+            story.append(Paragraph(f"<b>Descrição:</b> {o.get('descricao', '')}", styles["Normal"]))
+            story.append(Paragraph(f"<b>Atendimentos:</b>", styles["Normal"]))
+            story.append(Paragraph(f"Professor: {o.get('atendimento_professor', '')}", styles["Normal"]))
+            story.append(Paragraph(f"Tutor: {o.get('atendimento_tutor', '')}", styles["Normal"]))
+            story.append(Paragraph(f"Coordenação: {o.get('atendimento_coordenacao', '')}", styles["Normal"]))
+            story.append(Paragraph(f"Gestão: {o.get('atendimento_gestao', '')}", styles["Normal"]))
+            story.append(Spacer(1, 1*cm))
+
+        story.append(Spacer(1, 1*cm))
+        story.append(Paragraph("<b>Assinatura do Responsável: ____________________________________</b>", styles["Normal"]))
+
+        doc.build(story)
+        buffer.seek(0)
+        return send_file(buffer, as_attachment=True, download_name="Relatorio_Ocorrencias.pdf", mimetype="application/pdf")
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == '__main__':
 
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
 
