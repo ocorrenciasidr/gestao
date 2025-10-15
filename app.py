@@ -1192,24 +1192,27 @@ def ocorrencia_detalhes():
         if not numero:
             return jsonify({'error': 'Número da ocorrência não fornecido'}), 400
 
-        # busca a ocorrência
+        # Busca ocorrência na tabela principal
         dados = supabase.table('ocorrencias').select('*').eq('numero', numero).single().execute()
         ocorrencia = dados.data
         if not ocorrencia:
             return jsonify({'error': 'Ocorrência não encontrada'}), 404
 
-        # busca nome do professor e sala
+        # --- Busca nome do professor (d_funcionarios)
         professor_nome = None
-        sala_nome = None
         if ocorrencia.get('professor_id'):
-            prof = supabase.table('professores').select('nome').eq('id', ocorrencia['professor_id']).single().execute()
+            prof = supabase.table('d_funcionarios').select('nome').eq('id', ocorrencia['professor_id']).single().execute()
             if prof.data:
                 professor_nome = prof.data['nome']
-        if ocorrencia.get('sala_id'):
-            sala = supabase.table('salas').select('nome').eq('id', ocorrencia['sala_id']).single().execute()
-            if sala.data:
-                sala_nome = sala.data['nome']
 
+        # --- Busca nome da sala (d_salas)
+        sala_nome = None
+        if ocorrencia.get('sala_id'):
+            sala = supabase.table('d_salas').select('sala').eq('id', ocorrencia['sala_id']).single().execute()
+            if sala.data:
+                sala_nome = sala.data['sala']
+
+        # Monta o JSON de resposta completo
         resposta = {
             'numero': ocorrencia.get('numero'),
             'aluno_nome': ocorrencia.get('aluno_nome'),
@@ -1225,11 +1228,14 @@ def ocorrencia_detalhes():
         }
 
         return jsonify(resposta)
+
     except Exception as e:
         print('Erro em /api/ocorrencia_detalhes:', e)
         return jsonify({'error': str(e)}), 500
 
 
+
 if __name__ == '__main__':
 
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
