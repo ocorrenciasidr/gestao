@@ -457,7 +457,10 @@ def api_ocorrencias_finalizadas():
             pendente_tutor = st and (at_tutor == "")
             pendente_coord = sc and (at_coord == "")
             pendente_gestao = sg and (at_gest == "")
-            novo_status = "Aberta" if (pendente_tutor or pendente_coord or pendente_gestago := pendente_gestao) else "Finalizada"
+            
+            # CORREÇÃO DA LINHA 460: Removido o operador ':=', usando apenas pendente_gestao
+            novo_status = "Aberta" if (pendente_tutor or pendente_coord or pendente_gestao) else "Finalizada"
+            
             if item.get('status') != novo_status:
                 update_fields['status'] = novo_status
             if update_fields:
@@ -485,7 +488,7 @@ def api_ocorrencias_finalizadas():
     except Exception as e:
         logging.exception("Erro /api/ocorrencias_finalizadas")
         return jsonify({"error": str(e)}), 500
-
+        
 @app.route('/api/ocorrencias_todas')
 def api_ocorrencias_todas():
     try:
@@ -1178,5 +1181,6 @@ def api_get_frequencia_detalhes(salaId, dataSelecionada):
 if __name__ == '__main__':
 
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
 
 
