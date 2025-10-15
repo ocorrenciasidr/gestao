@@ -1178,9 +1178,58 @@ def api_get_frequencia_detalhes(salaId, dataSelecionada):
         logging.error(f"Erro ao buscar detalhes de frequência para edição: {e}")
         # Retorna um 500 com a mensagem de erro detalhada
         return jsonify({'error': f"Erro interno do servidor ao carregar frequência para edição: {e}"}), 500
+
+from flask import Flask, jsonify, request
+from supabase import create_client, Client
+
+# (configure aqui seu supabase)
+# supabase = create_client(url, key)
+
+@app.route('/api/ocorrencia_detalhes')
+def ocorrencia_detalhes():
+    try:
+        numero = request.args.get('numero')
+        if not numero:
+            return jsonify({'error': 'Número da ocorrência não fornecido'}), 400
+
+        # busca a ocorrência
+        dados = supabase.table('ocorrencias').select('*').eq('numero', numero).single().execute()
+        ocorrencia = dados.data
+        if not ocorrencia:
+            return jsonify({'error': 'Ocorrência não encontrada'}), 404
+
+        # busca nome do professor e sala
+        professor_nome = None
+        sala_nome = None
+        if ocorrencia.get('professor_id'):
+            prof = supabase.table('professores').select('nome').eq('id', ocorrencia['professor_id']).single().execute()
+            if prof.data:
+                professor_nome = prof.data['nome']
+        if ocorrencia.get('sala_id'):
+            sala = supabase.table('salas').select('nome').eq('id', ocorrencia['sala_id']).single().execute()
+            if sala.data:
+                sala_nome = sala.data['nome']
+
+        resposta = {
+            'numero': ocorrencia.get('numero'),
+            'aluno_nome': ocorrencia.get('aluno_nome'),
+            'descricao': ocorrencia.get('descricao'),
+            'status': ocorrencia.get('status'),
+            'tutor_nome': ocorrencia.get('tutor_nome'),
+            'atendimento_professor': ocorrencia.get('atendimento_professor'),
+            'atendimento_tutor': ocorrencia.get('atendimento_tutor'),
+            'atendimento_coordenacao': ocorrencia.get('atendimento_coordenacao'),
+            'atendimento_gestao': ocorrencia.get('atendimento_gestao'),
+            'professor_nome': professor_nome,
+            'sala_nome': sala_nome
+        }
+
+        return jsonify(resposta)
+    except Exception as e:
+        print('Erro em /api/ocorrencia_detalhes:', e)
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
 
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-
-
-
