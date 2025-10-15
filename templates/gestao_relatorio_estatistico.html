@@ -5,223 +5,101 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Relatório Geral Estatístico de Ocorrências</title>
 
-    <!-- SCRIPT MODIFICADO: agora usa sua API Flask -->
-    <script>
-        document.addEventListener('DOMContentLoaded', loadAllOcorrencias);
-
-        function mostrarMensagem(texto, tipo) {
-            const msgElement = document.getElementById('mensagem-status');
-            if (!msgElement) return;
-            msgElement.textContent = texto;
-            msgElement.classList.remove('hidden', 'bg-success', 'bg-danger', 'bg-warning', 'bg-indigo-600');
-            const classMap = { 'success': 'bg-success', 'danger': 'bg-danger', 'warning': 'bg-warning' };
-            msgElement.classList.add(classMap[tipo] || 'bg-indigo-600');
-            msgElement.classList.remove('hidden');
-            setTimeout(() => { msgElement.classList.add('hidden'); }, 5000);
-        }
-
-        // =======================================================
-        // CARREGAMENTO DE DADOS (USANDO SUA API FLASK)
-        // =======================================================
-        async function loadAllOcorrencias() {
-            const anyTbody = document.querySelector('tbody');
-            if (anyTbody) {
-                anyTbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-gray-400">Carregando dados estatísticos...</td></tr>`;
-            }
-
-            try {
-                const response = await fetch('/api/ocorrencias_todas');
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(errorText || 'Falha ao carregar os dados da API.');
-                }
-                const allOcorrencias = await response.json();
-                processarEstatisticas(allOcorrencias);
-            } catch (error) {
-                console.error("Erro ao carregar ocorrências:", error);
-                mostrarMensagem(`Erro ao carregar dados: ${error.message}`, 'danger');
-                if (anyTbody) {
-                    anyTbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-danger">Erro ao carregar dados. Verifique a API.</td></tr>`;
-                }
-            }
-        }
-
-        // =======================================================
-        // FUNÇÕES AUXILIARES
-        // =======================================================
-        function formatarData(dateString) {
-            if (!dateString) return null;
-            return new Date(dateString);
-        }
-
-        function getDaysDifference(startString, endString) {
-            const start = formatarData(startString);
-            const end = formatarData(endString);
-            if (!start || !end) return null;
-            const diffTime = Math.abs(end - start);
-            return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        }
-
-        function isFinalizada(o) {
-            const atendProf = !!o.dt_atendimento_professor;
-            const atendTutor = !o.solicitado_tutor || !!o.dt_atendimento_tutor;
-            const atendCoord = !o.solicitado_coordenacao || !!o.dt_atendimento_coordenacao;
-            const atendGestao = !o.solicitado_gestao || !!o.dt_atendimento_gestao;
-            return atendProf && atendTutor && atendCoord && atendGestao;
-        }
-
-        function getProfessorResponseStatus(o) {
-            if (!o.dt_atendimento_professor) return 'Não Respondidas';
-            const days = getDaysDifference(o.data_hora, o.dt_atendimento_professor);
-            if (days !== null) return days <= 7 ? 'Respondidas < 7 dias' : 'Respondidas > 7 dias';
-            return 'Não Respondidas';
-        }
-
-        // =======================================================
-        // PROCESSAMENTO E RENDERIZAÇÃO
-        // =======================================================
-        window.processarEstatisticas = function(ocorrencias) {
-            const stats = {
-                total: ocorrencias.length,
-                abertas: 0,
-                finalizadas: 0,
-                statusRespostaGeral: {'Respondidas < 7 dias': 0, 'Respondidas > 7 dias': 0, 'Não Respondidas': 0},
-                ocorrenciasPorSala: {},
-                ocorrenciasPorTutor: {},
-            };
-            
-            ocorrencias.forEach(o => {
-                if (isFinalizada(o)) stats.finalizadas++; else stats.abertas++;
-                const status = getProfessorResponseStatus(o);
-                stats.statusRespostaGeral[status]++;
-
-                const salaName = o.sala_nome;
-                const tutorName = o.tutor_nome;
-
-                if (salaName) {
-                    stats.ocorrenciasPorSala[salaName] = stats.ocorrenciasPorSala[salaName] || {total: 0, respondidasMenos7: 0, respondidasMais7: 0, naoRespondidas: 0};
-                    stats.ocorrenciasPorSala[salaName].total++;
-                    if (status === 'Respondidas < 7 dias') stats.ocorrenciasPorSala[salaName].respondidasMenos7++;
-                    else if (status === 'Respondidas > 7 dias') stats.ocorrenciasPorSala[salaName].respondidasMais7++;
-                    else stats.ocorrenciasPorSala[salaName].naoRespondidas++;
-                }
-
-                if (tutorName) {
-                    stats.ocorrenciasPorTutor[tutorName] = stats.ocorrenciasPorTutor[tutorName] || { total: 0, finalizadas: 0, abertas: 0, mediaDiasResposta: 0, somaDiasResposta: 0, contRespostas: 0 };
-                    stats.ocorrenciasPorTutor[tutorName].total++;
-                    if (isFinalizada(o)) stats.ocorrenciasPorTutor[tutorName].finalizadas++; else stats.ocorrenciasPorTutor[tutorName].abertas++;
-
-                    if (o.dt_atendimento_professor) {
-                        const days = getDaysDifference(o.data_hora, o.dt_atendimento_professor);
-                        if (days !== null) {
-                            stats.ocorrenciasPorTutor[tutorName].somaDiasResposta += days;
-                            stats.ocorrenciasPorTutor[tutorName].contRespostas++;
-                        }
-                    }
-                }
-            });
-            
-            Object.keys(stats.ocorrenciasPorTutor).forEach(tutor => {
-                const t = stats.ocorrenciasPorTutor[tutor];
-                if (t.contRespostas > 0) t.mediaDiasResposta = (t.somaDiasResposta / t.contRespostas).toFixed(1);
-            });
-
-            renderizarCards(stats);
-            renderizarTabelaGeral(stats);
-            renderizarTabelaPorSala(stats);
-            renderizarTabelaPorTutor(stats);
-            renderizarGraficoRespostas(stats);
-            renderizarGraficoPorTutor(stats);
-        }
-
-        function renderizarCards(stats) {
-            document.getElementById('total-ocorrencias').textContent = stats.total;
-            document.getElementById('abertas-ocorrencias').textContent = stats.abertas;
-            document.getElementById('finalizadas-ocorrencias').textContent = stats.finalizadas;
-        }
-
-        function renderizarTabelaGeral(stats) {
-            const tbody = document.getElementById('tabela-resumo-geral');
-            if (!tbody) return;
-            const total = stats.total;
-            let html = '';
-            const rows = [
-                {tipo: 'Respondidas < 7 dias', numero: stats.statusRespostaGeral['Respondidas < 7 dias']},
-                {tipo: 'Respondidas > 7 dias', numero: stats.statusRespostaGeral['Respondidas > 7 dias']},
-                {tipo: 'Não Respondidas', numero: stats.statusRespostaGeral['Não Respondidas']},
-            ];
-            rows.forEach(row => {
-                const porcentagem = total > 0 ? ((row.numero / total) * 100).toFixed(1) + '%' : '0%';
-                html += `<tr><td>${row.tipo}</td><td>${row.numero}</td><td>${porcentagem}</td></tr>`;
-            });
-            html += `<tr><td>TOTAL REGISTRADO</td><td>${total}</td><td>100%</td></tr>`;
-            tbody.innerHTML = html;
-        }
-
-        function renderizarTabelaPorSala(stats) {
-            const tbody = document.getElementById('tabela-por-sala');
-            if (!tbody) return;
-            let html = '';
-            const salas = Object.keys(stats.ocorrenciasPorSala).sort();
-            salas.forEach(sala => {
-                const s = stats.ocorrenciasPorSala[sala];
-                const porcentagem = stats.total > 0 ? ((s.total / stats.total) * 100).toFixed(1) + '%' : '0%';
-                html += `<tr><td>${sala}</td><td>${s.total}</td><td>${porcentagem}</td><td>${s.respondidasMenos7}</td><td>${s.respondidasMais7}</td><td>${s.naoRespondidas}</td></tr>`;
-            });
-            if (salas.length === 0) html = `<tr><td colspan="6">Nenhuma ocorrência registrada.</td></tr>`;
-            tbody.innerHTML = html;
-        }
-
-        function renderizarTabelaPorTutor(stats) {
-            const tbody = document.getElementById('tabela-por-tutor');
-            if (!tbody) return;
-            let html = '';
-            const tutores = Object.keys(stats.ocorrenciasPorTutor).sort();
-            tutores.forEach(tutor => {
-                const t = stats.ocorrenciasPorTutor[tutor];
-                const finalizadasPorcentagem = t.total > 0 ? ((t.finalizadas / t.total) * 100).toFixed(1) + '%' : '0%';
-                html += `<tr><td>${tutor}</td><td>${t.total}</td><td>${t.finalizadas} (${finalizadasPorcentagem})</td><td>${t.abertas}</td><td>${t.mediaDiasResposta}</td></tr>`;
-            });
-            if (tutores.length === 0) html = `<tr><td colspan="5">Nenhum tutor com ocorrência.</td></tr>`;
-            tbody.innerHTML = html;
-        }
-
-        let chartResposta = null;
-        function renderizarGraficoRespostas(stats) {
-            const ctx = document.getElementById('chart-respostas');
-            if (!ctx) return;
-            if (chartResposta) chartResposta.destroy();
-            chartResposta = new Chart(ctx, {
-                type: 'doughnut',
-                data: { labels: ['Resp. Rápida (< 7d)', 'Resp. Lenta (> 7d)', 'Não Respondida'], datasets: [{ data: [stats.statusRespostaGeral['Respondidas < 7 dias'], stats.statusRespostaGeral['Respondidas > 7 dias'], stats.statusRespostaGeral['Não Respondidas']], backgroundColor: ['#10B981', '#F59E0B', '#DC2626'] }] },
-                options: { plugins: { legend: { labels: { color: '#F8FAFC' }}} }
-            });
-        }
-
-        let chartTutor = null;
-        function renderizarGraficoPorTutor(stats) {
-            const ctx = document.getElementById('chart-tutor');
-            if (!ctx) return;
-            if (chartTutor) chartTutor.destroy();
-            const tutores = Object.keys(stats.ocorrenciasPorTutor).sort();
-            chartTutor = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: tutores,
-                    datasets: [
-                        { label: 'Total', data: tutores.map(t => stats.ocorrenciasPorTutor[t].total), backgroundColor: '#6366F1' },
-                        { label: 'Finalizadas', data: tutores.map(t => stats.ocorrenciasPorTutor[t].finalizadas), backgroundColor: '#10B981' }
-                    ]
-                },
-                options: { plugins: { legend: { labels: { color: '#F8FAFC' } } }, scales: { x: { ticks: { color: '#9CA3AF' } }, y: { ticks: { color: '#9CA3AF' } } } }
-            });
-        }
-    </script>
-
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-<body class="bg-dark-primary font-sans text-text-light">
-    <!-- resto do seu HTML original permanece igual -->
+<body class="bg-gray-900 text-gray-200 font-sans min-h-screen p-6">
+
+    <!-- Cabeçalho -->
+    <header class="text-center mb-8">
+        <h1 class="text-2xl font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
+            SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR
+        </h1><br>
+        <h2 class="text-xl font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
+            RELATÓRIO GERAL ESTATÍSTICO DE OCORRÊNCIAS
+        </h2>
+
+        <button onclick="window.location.href='/gestao_ocorrencia'"
+            class="mt-4 px-4 py-2 text-sm font-medium rounded-lg text-gray-300 border border-gray-600 hover:bg-gray-700 transition flex items-center mx-auto">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path>
+            </svg>
+            Voltar ao Menu de Ocorrências
+        </button>
+    </header>
+
+    <!-- Mensagem de status -->
+    <div id="mensagem-status" class="hidden text-center text-white px-4 py-2 rounded-lg my-4 mx-auto max-w-md"></div>
+
+    <!-- Cards -->
+    <section class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8 text-center">
+        <div class="bg-gray-800 p-4 rounded-xl shadow">
+            <h3 class="text-gray-400 text-sm mb-1">Total de Ocorrências</h3>
+            <p id="total-ocorrencias" class="text-3xl font-bold text-indigo-400">0</p>
+        </div>
+        <div class="bg-gray-800 p-4 rounded-xl shadow">
+            <h3 class="text-gray-400 text-sm mb-1">Abertas</h3>
+            <p id="abertas-ocorrencias" class="text-3xl font-bold text-yellow-400">0</p>
+        </div>
+        <div class="bg-gray-800 p-4 rounded-xl shadow">
+            <h3 class="text-gray-400 text-sm mb-1">Finalizadas</h3>
+            <p id="finalizadas-ocorrencias" class="text-3xl font-bold text-green-400">0</p>
+        </div>
+    </section>
+
+    <!-- Tabelas -->
+    <section class="space-y-8">
+        <div class="bg-gray-800 p-6 rounded-xl shadow">
+            <h3 class="text-lg font-semibold mb-3 border-b border-gray-700 pb-2">Resumo Geral</h3>
+            <table class="w-full text-left text-gray-300">
+                <thead>
+                    <tr class="text-gray-400 border-b border-gray-700">
+                        <th>Tipo</th><th>Número</th><th>%</th>
+                    </tr>
+                </thead>
+                <tbody id="tabela-resumo-geral"></tbody>
+            </table>
+        </div>
+
+        <div class="bg-gray-800 p-6 rounded-xl shadow">
+            <h3 class="text-lg font-semibold mb-3 border-b border-gray-700 pb-2">Ocorrências por Sala</h3>
+            <table class="w-full text-left text-gray-300">
+                <thead>
+                    <tr class="text-gray-400 border-b border-gray-700">
+                        <th>Sala</th><th>Total</th><th>%</th><th>&lt;7d</th><th>&gt;7d</th><th>Não Resp.</th>
+                    </tr>
+                </thead>
+                <tbody id="tabela-por-sala"></tbody>
+            </table>
+        </div>
+
+        <div class="bg-gray-800 p-6 rounded-xl shadow">
+            <h3 class="text-lg font-semibold mb-3 border-b border-gray-700 pb-2">Ocorrências por Tutor</h3>
+            <table class="w-full text-left text-gray-300">
+                <thead>
+                    <tr class="text-gray-400 border-b border-gray-700">
+                        <th>Tutor</th><th>Total</th><th>Finalizadas</th><th>Abertas</th><th>Média Dias Resp.</th>
+                    </tr>
+                </thead>
+                <tbody id="tabela-por-tutor"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- Gráficos -->
+    <section class="grid grid-cols-1 md:grid-cols-2 gap-8 mt-10">
+        <div class="bg-gray-800 p-6 rounded-xl shadow">
+            <h3 class="text-lg font-semibold mb-3 border-b border-gray-700 pb-2">Tempo de Resposta</h3>
+            <canvas id="chart-respostas" height="200"></canvas>
+        </div>
+        <div class="bg-gray-800 p-6 rounded-xl shadow">
+            <h3 class="text-lg font-semibold mb-3 border-b border-gray-700 pb-2">Ocorrências por Tutor</h3>
+            <canvas id="chart-tutor" height="200"></canvas>
+        </div>
+    </section>
+
+    <!-- Script do relatório -->
+    <script src="/static/js/gestao_relatorio_estatistico.js"></script>
+
 </body>
 </html>
