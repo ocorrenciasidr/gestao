@@ -8,19 +8,19 @@
     <script src="https://cdn.tailwindcss.com"></script>
     
     <script type="module">
-        // Importa apenas o necessário para simular dados e tipagem
+        // Importa apenas o necessário (manter por segurança)
         import { Timestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
         // Variáveis globais de dados
         let salasData = []; 
         let alunosData = [];
+        let fichaData = {}; // Variável para armazenar os dados da ficha
         
         // Helper para lidar com erros de fetch
         async function handleFetchResponse(url, context) {
             const response = await fetch(url);
             if (!response.ok) {
-                // Aqui você pode adicionar a lógica de mensagem de erro
-                // mostrarMensagem(`Erro ao buscar ${context}. Falha na API.`, 'danger');
+                // Remove o alerta, usa console.error para não travar a UX
                 throw new Error(`Falha no fetch de ${context}`);
             }
             return response.json();
@@ -30,8 +30,15 @@
             loadSalas();
         });
 
+        // Funções Auxiliares
+        function formatDate(dateString) {
+            if (!dateString) return '';
+            const [y, m, d] = dateString.split('-');
+            return `${d}/${m}/${y}`;
+        }
 
-        // 1. FILTRO SALA (Busca em /api/salas)
+        // --- MÓDULO DE FILTROS ---
+        
         window.loadSalas = async function() {
             const selectSala = document.getElementById('filter-sala');
             selectSala.innerHTML = '<option value="">Carregando Salas...</option>';
@@ -47,7 +54,6 @@
             loadAlunos();
         }
 
-        // 2. FILTRO ALUNO (Busca em /api/alunos_por_sala/)
         window.loadAlunos = async function() {
             const salaId = document.getElementById('filter-sala').value;
             const selectAluno = document.getElementById('filter-aluno');
@@ -69,64 +75,157 @@
             } else {
                  selectAluno.innerHTML = '<option value="">SELECIONE O ALUNO</option>';
             }
-            // Limpar/Resetar a ficha ao mudar de sala
-            document.getElementById('ficha-content').innerHTML = '<p class="text-center text-gray-400 mt-8">Selecione um aluno para carregar a ficha.</p>';
+            // Ocultar a ficha ao mudar de sala
+            document.getElementById('ficha-details-container').classList.add('hidden');
         }
         
-        // 3. CARREGAR DADOS DA FICHA (NOVO ENDPOINT GET)
+        // --- MÓDULO DE CARREGAMENTO E EXIBIÇÃO DA FICHA ---
+
         window.loadAlunoData = async function() {
              const alunoId = document.getElementById('filter-aluno').value;
-             const fichaContent = document.getElementById('ficha-content');
-             fichaContent.innerHTML = '<p class="text-center text-yellow-500 mt-8">Carregando Ficha...</p>';
+             const fichaContainer = document.getElementById('ficha-details-container');
              
+             // Oculta e exibe a mensagem de carregamento
+             fichaContainer.classList.add('hidden'); 
+             document.getElementById('loading-message').classList.remove('hidden');
+
              if (!alunoId) {
-                fichaContent.innerHTML = '<p class="text-center text-gray-400 mt-8">Selecione um aluno para carregar a ficha.</p>';
+                document.getElementById('loading-message').textContent = 'Selecione um aluno para carregar a ficha.';
                 return;
              }
 
              try {
                  // Endpoint necessário no Flask: /api/ficha_tutoria/<alunoId> (A ser implementado)
-                 const fichaData = await handleFetchResponse(`/api/ficha_tutoria/${alunoId}`, 'Ficha de Tutoria');
-                 
-                 // SIMULAÇÃO DE EXIBIÇÃO DA FICHA:
-                 fichaContent.innerHTML = `
-                    <div class="space-y-4">
-                        <h4 class="text-2xl font-bold text-indigo-400">Dados do Aluno</h4>
-                        <p class="text-lg"><strong>Nome:</strong> ${fichaData.aluno_nome || 'N/A'}</p>
-                        <p><strong>RA:</strong> ${fichaData.ra || 'N/A'}</p>
-                        <p><strong>Tutor(a):</strong> ${fichaData.tutor_nome || 'N/A'}</p>
-                        <p><strong>Sala:</strong> ${fichaData.sala_nome || 'N/A'}</p>
-                        
-                        <h4 class="text-2xl font-bold text-indigo-400 pt-4 border-t border-gray-600">Últimas Ocorrências</h4>
-                        ${fichaData.ocorrencias && fichaData.ocorrencias.length > 0 ? 
-                            fichaData.ocorrencias.map(o => `
-                                <div class="p-3 bg-dark-primary rounded-lg">
-                                    <p class="font-semibold text-sm">Data: ${o.data}</p>
-                                    <p class="text-xs">Descrição: ${o.descricao}</p>
-                                    <p class="text-xs text-red-400">Status: ${o.status}</p>
-                                </div>
-                            `).join('')
-                            : '<p>Nenhuma ocorrência registrada.</p>'}
-                            
-                        <button class="mt-6 w-full py-2 bg-accent hover:bg-emerald-600 rounded-lg font-semibold">Salvar/Atualizar Ficha</button>
-                    </div>
-                 `;
-                 
+                 const fichaDataRaw = await handleFetchResponse(`/api/ficha_tutoria/${alunoId}`, 'Ficha de Tutoria');
+                 fichaData = fichaDataRaw; // Armazena os dados globais
+
+                 // Exibição da ficha (usando a nova estrutura)
+                 document.getElementById('loading-message').classList.add('hidden');
+                 renderFicha();
+                 fichaContainer.classList.remove('hidden');
+
              } catch (e) { 
-                fichaContent.innerHTML = '<p class="text-center text-red-500 mt-8">Erro ao carregar os dados da ficha.</p>';
+                console.error("Erro ao carregar os dados da ficha:", e);
+                document.getElementById('loading-message').textContent = 'Erro ao carregar os dados da ficha.';
+                document.getElementById('loading-message').classList.remove('hidden');
              }
         }
         
-        // 4. SALVAR FICHA (POST para /api/salvar_ficha)
-        window.salvarFicha = async function(event) {
-             event.preventDefault();
-             // Aqui você implementaria a coleta e envio dos dados da ficha
-             // try {
-             //    const response = await fetch('/api/salvar_ficha', { /* ... */ });
-             //    // ... (Tratamento de sucesso) ...
-             // } catch (e) { /* ... */ }
-             alert("Lógica de salvamento da Ficha de Tutoria (POST /api/salvar_ficha) deve ser implementada no Flask.");
+        // NOVO: Função para renderizar os dados na nova estrutura
+        window.renderFicha = function() {
+            // Renderiza a seção Notas e Faltas
+            const notasFaltasBody = document.getElementById('notas-faltas-body');
+            notasFaltasBody.innerHTML = '';
+            (fichaData.disciplinas || []).forEach(disc => {
+                notasFaltasBody.innerHTML += `
+                    <tr class="border-b border-gray-700 hover:bg-dark-secondary/50 transition">
+                        <td class="p-3 text-sm font-medium text-text-light whitespace-nowrap">${disc.nome}</td>
+                        ${(disc.notas || []).map(n => `<td class="p-3"><input type="text" value="${n}" class="form-input p-1 h-8 text-center" disabled></td>`).join('')}
+                        ${(disc.faltas || []).map(f => `<td class="p-3"><input type="text" value="${f}" class="form-input p-1 h-8 text-center" disabled></td>`).join('')}
+                    </tr>
+                `;
+            });
+            
+            // Renderiza a seção Atendimento
+            const atendimentosBody = document.getElementById('atendimentos-body');
+            atendimentosBody.innerHTML = '';
+            (fichaData.atendimentos || []).forEach(atend => {
+                atendimentosBody.innerHTML += `
+                    <tr class="border-b border-gray-700 hover:bg-dark-secondary/50 transition">
+                        <td class="p-3 text-sm">${formatDate(atend.data)}</td>
+                        <td class="p-3 text-center">${atend.academico ? '✓' : ''}</td>
+                        <td class="p-3 text-center">${atend.profissional ? '✓' : ''}</td>
+                        <td class="p-3 text-center">${atend.pessoal ? '✓' : ''}</td>
+                        <td class="p-3 text-sm">${atend.tutor}</td>
+                    </tr>
+                `;
+            });
+
+            // Preenche Projeto de Vida
+            document.getElementById('pv-b1').value = (fichaData.projeto_vida || {}).b1 || '';
+            document.getElementById('pv-b2').value = (fichaData.projeto_vida || {}).b2 || '';
+            document.getElementById('pv-b3').value = (fichaData.projeto_vida || {}).b3 || '';
+            document.getElementById('pv-b4').value = (fichaData.projeto_vida || {}).b4 || '';
+            
+            // Preenche informações básicas
+            document.getElementById('info-tutorado').textContent = fichaData.aluno_nome || 'N/A';
+            document.getElementById('info-tutor').textContent = fichaData.tutor_nome || 'N/A';
+            document.getElementById('info-ra').textContent = fichaData.ra || 'N/A';
+            document.getElementById('info-sala').textContent = fichaData.sala_nome || 'N/A';
+            
+            // Verifica e preenche Checkbox Parente (simulação)
+            document.getElementById('check-parente').checked = fichaData.tem_parente_escola || false;
+            
+            // Preenche Filtros de Clube e Eletiva (simulação, usando o primeiro item ou 'N/A')
+            document.getElementById('select-clube-1s').value = fichaData.clube_1s || 'N/A';
+            document.getElementById('select-eletiva-1s').value = fichaData.eletiva_1s || 'N/A';
+            document.getElementById('select-eletiva-2s').value = fichaData.eletiva_2s || 'N/A';
         }
+
+
+        // --- MÓDULO DE SALVAMENTO ---
+
+        // NOVO: Função para registrar um único atendimento (seção 4)
+        window.saveAtendimento = async function() {
+            const alunoId = document.getElementById('filter-aluno').value;
+            const data = document.getElementById('atendimento-data').value;
+            const academico = document.getElementById('eixo-academico').checked;
+            const profissional = document.getElementById('eixo-profissional').checked;
+            const pessoal = document.getElementById('eixo-pessoal').checked;
+            const tutor = document.getElementById('atendimento-tutor').value.trim();
+
+            if (!alunoId || !data || !tutor || (!academico && !profissional && !pessoal)) {
+                alert('Preencha a Data, o(a) Tutor(a) e selecione pelo menos um Eixo.');
+                return;
+            }
+
+            const registro = {
+                aluno_id: alunoId,
+                data, 
+                academico, 
+                profissional, 
+                pessoal, 
+                tutor_nome: tutor // Backend deve esperar o nome ou ID do tutor
+            };
+
+            try {
+                // Endpoint /api/registrar_atendimento_tutoria (A ser implementado no Flask)
+                const response = await fetch('/api/registrar_atendimento_tutoria', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(registro),
+                });
+
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(result.error || response.statusText || 'Erro desconhecido ao salvar o registro.');
+
+                alert(result.message || 'Atendimento registrado com sucesso!');
+                
+                // Limpar formulário
+                document.getElementById('atendimento-data').value = '';
+                document.getElementById('eixo-academico').checked = false;
+                document.getElementById('eixo-profissional').checked = false;
+                document.getElementById('eixo-pessoal').checked = false;
+                // Não limpa o campo tutor, pois geralmente é o usuário logado
+                
+                // Recarrega apenas a lista de atendimentos se a API retornar sucesso
+                if(fichaData.atendimentos) fichaData.atendimentos.push(registro); 
+                else fichaData.atendimentos = [registro];
+                renderFicha();
+
+            } catch (error) {
+                console.error("Erro ao salvar atendimento:", error);
+                alert(`ERRO ao salvar atendimento: ${error.message}`);
+            }
+        }
+        
+        // placeholder para salvar todos os dados da ficha (PV, Notas)
+        window.salvarFichaCompleta = async function(event) {
+            event.preventDefault();
+            alert("A lógica para salvar o Projeto de Vida e Notas/Faltas (PUT/POST) deve ser implementada no Flask.");
+            // Lógica aqui para coletar todos os dados e enviar para a API
+        }
+
     </script>
     <script>
         tailwind.config = {
@@ -168,11 +267,11 @@
             </div>
         </header>
 
-        <main class="w-full max-w-4xl flex-grow">
-            <form id="ficha-form" onsubmit="salvarFicha(event)" class="bg-dark-secondary p-6 rounded-xl shadow-2xl space-y-6">
+        <main class="w-full max-w-6xl flex-grow space-y-8">
+            <form id="ficha-form" onsubmit="salvarFichaCompleta(event)" class="bg-dark-secondary p-6 rounded-xl shadow-2xl space-y-6">
 
                 <h3 class="text-xl font-bold border-b border-gray-600 pb-2 text-indigo-400">1. Seleção do Aluno</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                     
                     <div>
                         <label for="filter-sala" class="block text-sm font-medium mb-1">Sala *:</label>
@@ -187,12 +286,163 @@
                             <option value="">SELECIONE O ALUNO</option>
                         </select>
                     </div>
+
+                    <div>
+                        <label for="info-sala" class="block text-sm font-medium mb-1">Sala / Série:</label>
+                        <div id="info-sala" class="bg-gray-700 text-gray-300 p-2 rounded-lg text-sm">N/A</div>
+                    </div>
                 </div>
 
-                <h3 class="text-xl font-bold border-b border-gray-600 pb-2 text-indigo-400 pt-4">2. Dados da Ficha</h3>
+                <div id="loading-message" class="text-center text-yellow-500 pt-8 pb-8">
+                    Selecione um aluno para carregar a ficha.
+                </div>
                 
-                <div id="ficha-content" class="bg-dark-primary p-4 rounded-lg min-h-[300px]">
-                    <p class="text-center text-gray-400 mt-8">Selecione um aluno para carregar a ficha.</p>
+                <h3 class="text-xl font-bold border-b border-gray-600 pb-2 text-indigo-400 pt-4 hidden">2. Dados da Ficha</h3>
+                
+                <div id="ficha-details-container" class="space-y-8 hidden">
+                    
+                    <div class="bg-dark-secondary p-8 rounded-xl shadow-2xl space-y-6">
+                        <h3 class="text-2xl font-bold border-b border-gray-600 pb-3 text-secondary-accent">1. INFORMAÇÕES GERAIS</h3>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-1">Tutorado(a):</label>
+                                <div id="info-tutorado" class="bg-gray-700 text-gray-300 p-2 rounded-lg text-sm">N/A</div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-1">Tutor(a):</label>
+                                <div id="info-tutor" class="bg-gray-700 text-gray-300 p-2 rounded-lg text-sm">N/A</div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-1">RA:</label>
+                                <div id="info-ra" class="bg-gray-700 text-gray-300 p-2 rounded-lg text-sm">N/A</div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4 border-t border-gray-700">
+                            <div class="flex items-center space-x-2">
+                                <input id="check-parente" type="checkbox" class="form-checkbox bg-gray-700 border-gray-600" disabled>
+                                <label for="check-parente" class="text-sm font-medium text-gray-300">Tem Parente na Escola</label>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-1">Clube Juvenil 1º Semestre:</label>
+                                <select id="select-clube-1s" class="form-select text-xs" disabled><option value="N/A">N/A</option></select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-1">Eletiva 1º Semestre:</label>
+                                <select id="select-eletiva-1s" class="form-select text-xs" disabled><option value="N/A">N/A</option></select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-1">Eletiva 2º Semestre:</label>
+                                <select id="select-eletiva-2s" class="form-select text-xs" disabled><option value="N/A">N/A</option></select>
+                            </div>
+                        </div>
+                    </div>
+
+
+                    <div class="bg-dark-secondary p-8 rounded-xl shadow-2xl space-y-6">
+                        <h3 class="text-2xl font-bold border-b border-gray-600 pb-3 text-secondary-accent">2. PROJETO DE VIDA</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-1">1º Bimestre:</label>
+                                <textarea id="pv-b1" rows="3" class="form-textarea" placeholder="CAIXA DE TEXTO"></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-1">2º Bimestre:</label>
+                                <textarea id="pv-b2" rows="3" class="form-textarea" placeholder="CAIXA DE TEXTO"></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-1">3º Bimestre:</label>
+                                <textarea id="pv-b3" rows="3" class="form-textarea" placeholder="CAIXA DE TEXTO"></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-300 mb-1">4º Bimestre:</label>
+                                <textarea id="pv-b4" rows="3" class="form-textarea" placeholder="CAIXA DE TEXTO"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-dark-secondary p-8 rounded-xl shadow-2xl space-y-6 overflow-x-auto">
+                        <h3 class="text-2xl font-bold border-b border-gray-600 pb-3 text-secondary-accent">3. NOTAS E FALTAS</h3>
+                        <table class="min-w-full border-collapse">
+                            <thead>
+                                <tr class="bg-dark-primary/70 text-gray-300 uppercase text-xs">
+                                    <th rowspan="2" class="p-3 border border-gray-700 text-left w-1/5">DISCIPLINAS / BIMESTRE</th>
+                                    <th colspan="4" class="p-3 border border-gray-700 text-center">NOTAS</th>
+                                    <th colspan="4" class="p-3 border border-gray-700 text-center">FALTAS</th>
+                                </tr>
+                                <tr class="bg-dark-primary/70 text-gray-300 uppercase text-xs">
+                                    <th class="p-3 border border-gray-700 text-center">1ºB</th>
+                                    <th class="p-3 border border-gray-700 text-center">2ºB</th>
+                                    <th class="p-3 border border-gray-700 text-center">3ºB</th>
+                                    <th class="p-3 border border-gray-700 text-center">4ºB</th>
+                                    <th class="p-3 border border-gray-700 text-center">1ºB</th>
+                                    <th class="p-3 border border-gray-700 text-center">2ºB</th>
+                                    <th class="p-3 border border-gray-700 text-center">3ºB</th>
+                                    <th class="p-3 border border-gray-700 text-center">4ºB</th>
+                                </tr>
+                            </thead>
+                            <tbody id="notas-faltas-body">
+                                </tbody>
+                        </table>
+                    </div>
+
+                    <div class="bg-dark-secondary p-8 rounded-xl shadow-2xl space-y-6">
+                        <h3 class="text-2xl font-bold border-b border-gray-600 pb-3 text-secondary-accent">4. ATENDIMENTO DE TUTORIA INDIVIDUAL</h3>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-5 gap-4 bg-dark-primary/50 p-4 rounded-lg border border-gray-700">
+                            <div class="col-span-1">
+                                <label for="atendimento-data" class="block text-sm font-medium text-gray-300 mb-1">Data:</label>
+                                <input id="atendimento-data" type="date" class="form-input text-sm" required>
+                            </div>
+
+                            <div class="col-span-3 flex items-center space-x-4 md:space-x-8 justify-around pt-6 md:pt-0">
+                                <label class="text-sm font-medium text-gray-300 flex items-center space-x-1">
+                                    <input id="eixo-academico" type="checkbox" class="form-checkbox">
+                                    <span>Acadêmico</span>
+                                </label>
+                                <label class="text-sm font-medium text-gray-300 flex items-center space-x-1">
+                                    <input id="eixo-profissional" type="checkbox" class="form-checkbox">
+                                    <span>Profissional</span>
+                                </label>
+                                <label class="text-sm font-medium text-gray-300 flex items-center space-x-1">
+                                    <input id="eixo-pessoal" type="checkbox" class="form-checkbox">
+                                    <span>Pessoal</span>
+                                </label>
+                            </div>
+
+                            <div class="col-span-1">
+                                <label for="atendimento-tutor" class="block text-sm font-medium text-gray-300 mb-1">Registrado por:</label>
+                                <input id="atendimento-tutor" type="text" class="form-input text-sm" placeholder="Nome do Tutor(a)" required>
+                            </div>
+                            
+                            <button type="button" onclick="saveAtendimento()" class="col-span-full mt-2 bg-secondary-accent hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg">
+                                Registrar Novo Atendimento
+                            </button>
+                        </div>
+                        
+                        <table class="min-w-full border-collapse mt-4">
+                            <thead>
+                                <tr class="bg-dark-primary/70 text-gray-300 uppercase text-xs">
+                                    <th class="p-3 border border-gray-700 text-left w-1/12">Data</th>
+                                    <th colspan="3" class="p-3 border border-gray-700 text-center w-3/12">Eixo</th>
+                                    <th class="p-3 border border-gray-700 text-left w-8/12">Registro realizado pelo(a) Tutor(a)</th>
+                                </tr>
+                                <tr class="bg-dark-primary/70 text-gray-300 uppercase text-xs">
+                                    <th class="p-1 border border-gray-700"></th>
+                                    <th class="p-1 border border-gray-700 text-center">Acadêmico</th>
+                                    <th class="p-1 border border-gray-700 text-center">Profissional</th>
+                                    <th class="p-1 border border-gray-700 text-center">Pessoal</th>
+                                    <th class="p-1 border border-gray-700"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="atendimentos-body">
+                                </tbody>
+                        </table>
+                    </div>
+                    
+                    <button type="submit" class="w-full py-3 bg-accent hover:bg-emerald-600 rounded-lg font-semibold text-white">SALVAR / ATUALIZAR FICHA COMPLETA</button>
+
                 </div>
             </form>
 
