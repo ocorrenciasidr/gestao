@@ -91,19 +91,29 @@
     }
 
     async function carregarOcorrencias() {
-      mostrarMensagem("Carregando ocorrências abertas...", "info");
+      mostrarMensagem("Carregando ocorrências...", "info");
       const tabelaCorpo = document.getElementById("ocorrencias-corpo");
+      // Mensagem clara de que está buscando dados no servidor
+      tabelaCorpo.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-yellow-400">Buscando dados no servidor...</td></tr>`;
 
       try {
+        // ATENÇÃO: A URL de API deve ser para o endpoint que retorna todas as ocorrências
         const response = await fetch("/api/ocorrencias_abertas");
         if (!response.ok) {
           const errorText = await response.text();
-          throw new Error(`API falhou com status ${response.status}. ${errorText}`);
+          throw new Error(`API falhou com status ${response.status}. Detalhes: ${errorText.substring(0, 100)}`);
         }
 
         const todasOcorrencias = await response.json();
-
-        // Exibe somente ocorrências com pendências (T/C/G)
+        
+        // -----------------------------------------------------------
+        // INÍCIO: ALTERAÇÃO PARA DEBUG DE CARREGAMENTO (MOSTRAR TUDO)
+        // O código agora mostrará TODAS as ocorrências do banco de dados,
+        // mesmo as 'Finalizadas', para confirmar que a tabela carrega.
+        // -----------------------------------------------------------
+        const ocorrenciasAbertas = todasOcorrencias;
+        
+        /* CÓDIGO DE FILTRO ORIGINAL (COMENTADO PARA DEBUG)
         const ocorrenciasAbertas = todasOcorrencias.filter((occ) => {
           const solicitadoTutor = occ.solicitado_tutor === true || occ.solicitado_tutor === "true" || occ.solicitado_tutor === 1;
           const solicitadoCoord = occ.solicitado_coordenacao === true || occ.solicitado_coordenacao === "true" || occ.solicitado_coordenacao === 1;
@@ -115,12 +125,17 @@
 
           return pendenteTutor || pendenteCoord || pendenteGestao;
         });
+        */
+        // -----------------------------------------------------------
+        // FIM: ALTERAÇÃO PARA DEBUG DE CARREGAMENTO
+        // -----------------------------------------------------------
+
 
         tabelaCorpo.innerHTML = "";
 
         if (ocorrenciasAbertas.length === 0) {
-          tabelaCorpo.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-gray-400">Nenhuma ocorrência aberta pendente.</td></tr>`;
-          mostrarMensagem("Nenhuma ocorrência pendente.", "info");
+          tabelaCorpo.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-gray-400">Nenhuma ocorrência encontrada.</td></tr>`;
+          mostrarMensagem("Nenhuma ocorrência encontrada.", "info");
           return;
         }
 
@@ -139,10 +154,11 @@
         });
 
         tabelaCorpo.innerHTML = rowsHtml;
-        mostrarMensagem("Ocorrências abertas carregadas com sucesso!", "success");
+        mostrarMensagem(`Total de ${ocorrenciasAbertas.length} registros carregados.`, "success");
       } catch (error) {
-        console.error(error);
-        mostrarMensagem("Erro ao carregar lista. Ver console.", "danger");
+        console.error("Erro no carregamento de ocorrências:", error);
+        tabelaCorpo.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-red-400">ERRO: ${error.message}</td></tr>`;
+        mostrarMensagem("Erro ao carregar lista. Verifique console e Backend.", "danger");
       }
     }
   </script>
@@ -161,8 +177,8 @@
       <h2 class="text-lg text-text-light mt-2 font-light border-b border-gray-700 pb-2 inline-block">
         GESTÃO DE OCORRÊNCIAS - OCORRÊNCIAS ABERTAS
       </h2>
-       <button onclick="window.location.href='/gestao_ocorrencia'"
-                    class="mt-4 px-4 py-2 text-sm font-medium rounded-lg text-gray-300 border border-gray-600 hover:bg-gray-700 transition duration-150 flex items-center mx-auto">
+        <button onclick="window.location.href='/gestao_ocorrencia'"
+                        class="mt-4 px-4 py-2 text-sm font-medium rounded-lg text-gray-300 border border-gray-600 hover:bg-gray-700 transition duration-150 flex items-center mx-auto">
                 <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path></svg>
                 Voltar ao Menu de Ocorrências
             </button>
@@ -189,12 +205,12 @@
       </table>
     </main>
     <footer class="w-full text-center mt-10 p-4 text-gray-400 text-sm border-t border-gray-800">
-            <p class="mb-1 text-base font-medium">
-                DESENVOLVEDOR: MARCELO ANDRÉ NOGUEIRA CARDES
-            </p>
-            <p class="text-xs font-light tracking-wide">
-                LICENCIADO COMO TESTE PARA E.E. PEI PROFESSORA IRENE DIAS RIBEIRO
-            </p>
+          <p class="mb-1 text-base font-medium">
+              DESENVOLVEDOR: MARCELO ANDRÉ NOGUEIRA CARDES
+          </p>
+          <p class="text-xs font-light tracking-wide">
+              LICENCIADO COMO TESTE PARA E.E. PEI PROFESSORA IRENE DIAS RIBEIRO
+          </p>
         </footer>
 
   </div>
