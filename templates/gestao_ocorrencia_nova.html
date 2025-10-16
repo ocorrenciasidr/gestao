@@ -163,7 +163,7 @@
         }
     }
 
-    // LÓGICA DE SUBMISSÃO (CREATE) - AJUSTADA PARA REDIRECIONAR
+    // LÓGICA DE SUBMISSÃO (CREATE) - CORRIGIDA
     async function submeterOcorrencia(event) {
         event.preventDefault();
         
@@ -210,12 +210,12 @@
                 throw new Error(result.error || 'Erro desconhecido ao registrar');
             }
             
-            mostrarMensagem('Ocorrência registrada com sucesso!', 'success');
+            mostrarMensagem(result.message, 'success');
             
-            // Redireciona para o Menu de Ocorrências após sucesso
-            setTimeout(() => {
-                window.location.href = '/gestao_ocorrencia';
-            }, 1000); 
+            // Limpar formulário após o envio
+            document.getElementById('ocorrencia-form').reset();
+            document.getElementById('tutor').value = '';
+            atualizarAlunos(); 
 
         } catch (error) {
             console.error("Erro ao registrar a ocorrência:", error);
@@ -267,7 +267,7 @@
             <h1 class="text-xl sm:text-2xl text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
                 SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR
             </h1><br>
-            <h2 class="text-base sm:text-lg text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
+            <h2 class="text-xl sm:text-2xl text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
                 GESTÃO DE OCORRÊNCIAS - NOVA OCORRÊNCIA
             </h2>
 
@@ -369,3 +369,11 @@
 </body>
 
 </html>
+
+
+
+
+
+
+
+
