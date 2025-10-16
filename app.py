@@ -5,6 +5,8 @@ from flask import Flask, render_template, request, jsonify
 from supabase import create_client, Client
 import json
 from datetime import datetime
+# Importação necessária para calcular os dias do mês no relatório de frequência detalhada
+from calendar import monthrange 
 
 # =========================================================
 # CONFIGURAÇÕES INICIAIS
@@ -58,6 +60,20 @@ def _to_bool(value):
         return False
     return False
 
+def calcular_dias_resposta(dt_abertura, dt_fechamento_str):
+    """Calcula a diferença em dias entre a abertura e o fechamento da ocorrência."""
+    if not dt_fechamento_str or not dt_abertura:
+        return None
+    try:
+        dt_fechamento = datetime.fromisoformat(dt_fechamento_str.replace('Z', '+00:00'))
+        dt_abertura = datetime.fromisoformat(dt_abertura.replace('Z', '+00:00'))
+        
+        diff = dt_fechamento - dt_abertura
+        # Retorna o número de dias arredondado para cima (mínimo 1 dia se fechado no dia seguinte)
+        return diff.days + (1 if diff.seconds > 0 else 0) 
+    except Exception:
+        return None
+
 DEFAULT_AUTOTEXT = "ATENDIMENTO NÃO SOLICITADO PELO RESPONSÁVEL DA OCORRÊNCIA"
 
 
@@ -92,10 +108,6 @@ def gestao_ocorrencia():
 @app.route('/gestao_ocorrencia_nova')
 def gestao_ocorrencia_nova():
     return render_template('gestao_ocorrencia_nova.html')
-
-@app.route('/gestao_relatorio_frequencia')
-def gestao_relatorio_frequencia():
-    return render_template('gestao_relatorio_frequencia.html') 
     
 @app.route("/gestao_ocorrencia_abertas")
 def gestao_ocorrencia_abertas():
@@ -119,7 +131,8 @@ def gestao_relatorio_estatistico():
 
 @app.route('/gestao_relatorio_frequencia')
 def gestao_relatorio_frequencia():
-    return render_template('gestao_relatorio_frequencia.html')
+    # ROTA CORRIGIDA: Aponta para o arquivo que contém a lógica de filtro/tabela de frequência
+    return render_template('gestao_relatorio_frequencia (4).html') 
 
 @app.route('/gestao_relatorio_impressao')
 def gestao_relatorio_impressao():
@@ -976,96 +989,138 @@ def api_cadastrar_aluno():
 
 @app.route('/api/salvar_frequencia', methods=['POST'])
 def api_salvar_frequencia():
+    """Salva a frequência P/F em massa, utilizando UPSERT para evitar duplicatas."""
     data_list = request.json
     if not data_list or not isinstance(data_list, list):
-        return jsonify({"error": "Dados inválidos: Esperado uma lista de registros.", "status": 400}), 400
-    registros_a_inserir = []
+        return jsonify({"error": "Dados inválidos: Esperado uma lista de registros."}, 400)
+        
+    registros_a_salvar = []
+    
     for item in data_list:
         try:
             aluno_id_bigint = int(item['aluno_id'])
             sala_id_bigint = int(item['sala_id'])
-            status = item.get('status')
+            data = item['data']
+            status = item['status']
+            
+            # Garante que só P e F podem ser inseridos aqui, para não sobrescrever PA/PS/PAS
+            if status not in ['P', 'F']:
+                logging.warning(f"Status inválido {status} na frequência em massa. Ignorando.")
+                continue
+
             registro = {
                 "fk_aluno_id": aluno_id_bigint,
                 "fk_sala_id": sala_id_bigint,
-                "data": item.get('data'),
-                "status": status
+                "data": data,
+                "status": status,
+                # Chaves de conflito para UPSERT:
+                "data": data, 
+                "fk_aluno_id": aluno_id_bigint
             }
-            if status and status.upper() in ('PA', 'ATRASO', 'PRESENTE_ATRASADO'):
-                registro['hora_atraso'] = item.get('hora') or item.get('hora_registro')
-                registro['motivo_atraso'] = item.get('motivo')
-                registro['responsavel_atraso'] = item.get('responsavel')
-                registro['telefone_atraso'] = item.get('telefone')
-            elif status and status.upper() in ('PS', 'SAIDA', 'SAIDA_ANTECIPADA'):
-                registro['hora_saida'] = item.get('hora') or item.get('hora_registro')
-                registro['motivo_saida'] = item.get('motivo')
-                registro['responsavel_saida'] = item.get('responsavel')
-                registro['telefone_saida'] = item.get('telefone')
-            registros_a_inserir.append(registro)
-        except (ValueError, KeyError):
+            registros_a_salvar.append(registro)
+        except (ValueError, KeyError, TypeError):
             continue
-    if not registros_a_inserir:
-        return jsonify({"error": "Nenhum registro válido foi encontrado para salvar.", "status": 400}), 400
+            
+    if not registros_a_salvar:
+        return jsonify({"error": "Nenhum registro válido foi encontrado para salvar."}, 400)
+        
     try:
-        response = supabase.table('f_frequencia').insert(registros_a_inserir).execute()
+        # Usa UPSERT (on_conflict na PK) para atualizar se já existir ou inserir se for novo.
+        response = supabase.table('f_frequencia').upsert(registros_a_salvar, on_conflict='fk_aluno_id, data').execute()
         handle_supabase_response(response)
-        return jsonify({"message": f"{len(registros_a_inserir)} registros de frequência salvos com sucesso!", "status": 201}), 201
+        return jsonify({"message": f"{len(registros_a_salvar)} registros de frequência salvos/atualizados com sucesso!", "status": 201}), 201
     except Exception as e:
-        if "unique constraint" in str(e):
-            return jsonify({"error": "Erro: Já existe um registro de frequência para um aluno na data selecionada.", "status": 409}), 409
-        logging.error(f"Erro no Supabase ao salvar frequência: {e}")
+        logging.error(f"Erro no Supabase ao salvar frequência em massa: {e}")
         return jsonify({"error": f"Erro interno do servidor: {e}", "status": 500}), 500
 
 @app.route('/api/salvar_atraso', methods=['POST'])
 def api_salvar_atraso():
+    """Salva um registro de PA ou PAS, atualizando o status se necessário."""
     data = request.json
     required_fields = ['aluno_id', 'sala_id', 'data', 'hora', 'motivo']
     if not all(field in data for field in required_fields):
-        return jsonify({"error": "Dados incompletos: Aluno, Data, Hora e Motivo são obrigatórios.", "status": 400}), 400
+        return jsonify({"error": "Dados incompletos: Aluno, Data, Hora e Motivo são obrigatórios."}, 400)
+    
+    aluno_id, sala_id = int(data['aluno_id']), int(data['sala_id'])
+    registro_data = data['data']
+    
     try:
+        # 1. Busca o status atual
+        resp = supabase.table('f_frequencia').select('status, id').eq('fk_aluno_id', aluno_id).eq('data', registro_data).maybe_single().execute()
+        current_status = resp.data['status'] if resp.data else None
+        
+        # 2. Determina o novo status combinado
+        novo_status = "PA"
+        if current_status == 'PS' or current_status == 'PAS': # Já tinha PS ou PAS
+            novo_status = 'PAS'
+        elif current_status == 'F': # Estava faltando, mas apareceu com atraso.
+             novo_status = 'PA'
+        elif current_status == 'P': # Estava presente. Vira PA.
+             novo_status = 'PA'
+
+        # 3. Prepara o registro (usa UPSERT)
         registro = {
-            "fk_aluno_id": int(data['aluno_id']),
-            "fk_sala_id": int(data['sala_id']),
-            "data": data['data'],
+            "fk_aluno_id": aluno_id,
+            "fk_sala_id": sala_id,
+            "data": registro_data,
             "hora_atraso": data['hora'],
             "motivo_atraso": data['motivo'],
-            "status": "PA",
             "responsavel_atraso": data.get('responsavel'),
-            "telefone_atraso": data.get('telefone')
+            "telefone_atraso": data.get('telefone'),
+            "status": novo_status
         }
-        response = supabase.table('f_frequencia').insert(registro).execute()
+        
+        response = supabase.table('f_frequencia').upsert(registro, on_conflict='fk_aluno_id, data').execute()
         handle_supabase_response(response)
-        return jsonify({"message": "Registro de Atraso salvo com sucesso!", "status": 201}), 201
+        
+        return jsonify({"message": f"Registro de Atraso salvo com sucesso! Status: {novo_status}", "status": 201}), 201
     except Exception as e:
-        if "unique constraint" in str(e):
-            return jsonify({"error": "Erro: Já existe um registro de frequência para este aluno na data.", "status": 409}), 409
         logging.error(f"Erro no Supabase ao salvar atraso: {e}")
         return jsonify({"error": f"Erro interno do servidor: {e}", "status": 500}), 500
 
 @app.route('/api/salvar_saida_antecipada', methods=['POST'])
 def api_salvar_saida_antecipada():
+    """Salva um registro de PS ou PAS, atualizando o status se necessário."""
     data = request.json
     required_fields = ['aluno_id', 'sala_id', 'data', 'hora', 'motivo']
     if not all(field in data for field in required_fields):
-        return jsonify({"error": "Dados incompletos: Aluno, Data, Hora e Motivo são obrigatórios.", "status": 400}), 400
+        return jsonify({"error": "Dados incompletos: Aluno, Data, Hora e Motivo são obrigatórios."}, 400)
+        
+    aluno_id, sala_id = int(data['aluno_id']), int(data['sala_id'])
+    registro_data = data['data']
+
     try:
+        # 1. Busca o status atual
+        resp = supabase.table('f_frequencia').select('status, id').eq('fk_aluno_id', aluno_id).eq('data', registro_data).maybe_single().execute()
+        current_status = resp.data['status'] if resp.data else None
+        
+        # 2. Determina o novo status combinado
+        novo_status = "PS"
+        if current_status == 'PA' or current_status == 'PAS': # Já tinha PA ou PAS
+            novo_status = 'PAS'
+        elif current_status == 'F': # Estava faltando, mas saiu cedo (o que implica presença).
+             novo_status = 'PS'
+        elif current_status == 'P': # Estava presente. Vira PS.
+             novo_status = 'PS'
+        
+        # 3. Prepara o registro (usa UPSERT)
         registro = {
-            "fk_aluno_id": int(data['aluno_id']),
-            "fk_sala_id": int(data['sala_id']),
-            "data": data['data'],
+            "fk_aluno_id": aluno_id,
+            "fk_sala_id": sala_id,
+            "data": registro_data,
             "hora_saida": data['hora'],
             "motivo_saida": data['motivo'],
-            "status": "PS",
             "responsavel_saida": data.get('responsavel'),
-            "telefone_saida": data.get('telefone')
+            "telefone_saida": data.get('telefone'),
+            "status": novo_status
         }
-        response = supabase.table('f_frequencia').insert(registro).execute()
+        
+        response = supabase.table('f_frequencia').upsert(registro, on_conflict='fk_aluno_id, data').execute()
         handle_supabase_response(response)
-        return jsonify({"message": "Registro de Saída Antecipada salvo com sucesso!", "status": 201}), 201
+        
+        return jsonify({"message": f"Registro de Saída Antecipada salvo com sucesso! Status: {novo_status}", "status": 201}), 201
     except Exception as e:
-        if "unique constraint" in str(e):
-            return jsonify({"error": "Erro: Já existe um registro de frequência para este aluno na data.", "status": 409}), 409
-        logging.error(f"Erro no Supabase ao salvar saída: {e}")
+        logging.error(f"Erro no Supabase ao salvar saída antecipada: {e}")
         return jsonify({"error": f"Erro interno do servidor: {e}", "status": 500}), 500
 
 @app.route('/api/registrar_ocorrencia', methods=['POST'])
@@ -1303,9 +1358,13 @@ def api_relatorio_estatistico():
             
             # 3.2. Por Mês
             if occ_data_hora:
-                dt = datetime.fromisoformat(occ_data_hora.replace('Z', '+00:00'))
-                mes_ano_key = dt.strftime("%Y-%m")
-                ocorrencias_por_mes[mes_ano_key] = ocorrencias_por_mes.get(mes_ano_key, 0) + 1
+                # Tratamento para datetime.fromisoformat: 
+                try:
+                    dt = datetime.fromisoformat(occ_data_hora.replace('Z', '+00:00'))
+                    mes_ano_key = dt.strftime("%Y-%m")
+                    ocorrencias_por_mes[mes_ano_key] = ocorrencias_por_mes.get(mes_ano_key, 0) + 1
+                except Exception:
+                    logging.warning(f"Data de ocorrência inválida: {occ_data_hora}")
             
             # 3.3. Estatísticas por Sala
             if sala_id_str in salas_map:
@@ -1315,31 +1374,35 @@ def api_relatorio_estatistico():
                 salas_stats[sala_id_str]['total'] += 1
                 
                 if occ_status == 'Aberta' and occ_data_hora:
-                    dt_abertura = datetime.fromisoformat(occ_data_hora.replace('Z', '+00:00'))
-                    dias_aberta = (hoje - dt_abertura).days
-                    
-                    if dias_aberta <= 7:
-                        salas_stats[sala_id_str]['menos_7d'] += 1
-                    else:
-                        salas_stats[sala_id_str]['mais_7d'] += 1
+                    try:
+                        dt_abertura = datetime.fromisoformat(occ_data_hora.replace('Z', '+00:00'))
+                        dias_aberta = (hoje - dt_abertura).days
                         
-                    # Verifica se é "Não Respondida"
-                    solicitado = (_to_bool(occ.get('solicitado_tutor')) or 
-                                  _to_bool(occ.get('solicitado_coordenacao')) or 
-                                  _to_bool(occ.get('solicitado_gestao')))
-                    
-                    atendimento_tutor = occ.get('atendimento_tutor')
-                    atendimento_coord = occ.get('atendimento_coordenacao')
-                    atendimento_gestao = occ.get('atendimento_gestao')
-                    
-                    respondido = (
-                        (atendimento_tutor and atendimento_tutor != DEFAULT_AUTOTEXT) or
-                        (atendimento_coord and atendimento_coord != DEFAULT_AUTOTEXT) or
-                        (atendimento_gestao and atendimento_gestao != DEFAULT_AUTOTEXT)
-                    )
-                    
-                    if solicitado and not respondido:
-                        salas_stats[sala_id_str]['nao_respondidas'] += 1
+                        if dias_aberta <= 7:
+                            salas_stats[sala_id_str]['menos_7d'] += 1
+                        else:
+                            salas_stats[sala_id_str]['mais_7d'] += 1
+                            
+                        # Verifica se é "Não Respondida"
+                        solicitado = (_to_bool(occ.get('solicitado_tutor')) or 
+                                      _to_bool(occ.get('solicitado_coordenacao')) or 
+                                      _to_bool(occ.get('solicitado_gestao')))
+                        
+                        atendimento_tutor = occ.get('atendimento_tutor')
+                        atendimento_coord = occ.get('atendimento_coordenacao')
+                        atendimento_gestao = occ.get('atendimento_gestao')
+                        
+                        respondido = (
+                            (atendimento_tutor and atendimento_tutor != DEFAULT_AUTOTEXT) or
+                            (atendimento_coord and atendimento_coord != DEFAULT_AUTOTEXT) or
+                            (atendimento_gestao and atendimento_gestao != DEFAULT_AUTOTEXT)
+                        )
+                        
+                        if solicitado and not respondido:
+                            salas_stats[sala_id_str]['nao_respondidas'] += 1
+                    except Exception:
+                        logging.warning(f"Erro no cálculo de dias abertas para ocorrência {occ.get('numero')}")
+
 
             # 3.4. Estatísticas por Tutor
             if tutor_id_str and tutor_id_str in tutores_map:
@@ -1510,312 +1573,668 @@ def ocorrencia_detalhes():
         logging.exception(f"Erro ao consultar Supabase para detalhes da ocorrência {numero}")
         return jsonify({'error': f'Erro ao consultar Supabase: {str(e)}'}), 500
 
-@app.route("/api/relatorio_estatistico")
-def relatorio_estatistico():
-    try:
-        # Exemplo de consulta (ajuste conforme seu banco)
-        total = supabase.table("ocorrencias").count().execute().count
-        abertas = supabase.table("ocorrencias").select("status", count="exact").eq("status", "Aberta").execute().count
-        finalizadas = supabase.table("ocorrencias").select("status", count="exact").eq("status", "Finalizada").execute().count
 
-        # Exemplo de dados de resumo
-        resumo_geral = [
-            {"tipo": "Indisciplina", "numero": 10, "percentual": 50},
-            {"tipo": "Atraso", "numero": 5, "percentual": 25},
-            {"tipo": "Outros", "numero": 5, "percentual": 25},
-        ]
-
-        # Exemplo de dados por sala
-        por_sala = [
-            {"sala": "8ºA", "total": 5, "percentual": 25, "menos7d": 3, "mais7d": 1, "nao_respondidas": 1},
-            {"sala": "8ºB", "total": 10, "percentual": 50, "menos7d": 7, "mais7d": 2, "nao_respondidas": 1},
-        ]
-
-        # Exemplo de dados por tutor
-        por_tutor = [
-            {"tutor": "Carlos", "total": 8, "finalizadas": 5, "abertas": 3, "media_dias": 4},
-            {"tutor": "Ana", "total": 12, "finalizadas": 9, "abertas": 3, "media_dias": 2},
-        ]
-
-        # Exemplo de dados para gráficos
-        grafico_tempo = {"labels": ["<7d", ">7d", "Não Resp."], "valores": [10, 4, 2]}
-        grafico_tutor = {"labels": ["Carlos", "Ana"], "valores": [8, 12]}
-
-        return jsonify({
-            "total_ocorrencias": total,
-            "abertas": abertas,
-            "finalizadas": finalizadas,
-            "resumo_geral": resumo_geral,
-            "por_sala": por_sala,
-            "por_tutor": por_tutor,
-            "grafico_tempo": grafico_tempo,
-            "grafico_tutor": grafico_tutor
-        })
-
-    except Exception as e:
-        print("Erro ao gerar estatísticas:", e)
-        return jsonify({"error": str(e)}), 500
-
-# NOVAS ROTAS DE FREQUÊNCIA E RELATÓRIO
-# =========================================================
-
-@app.route('/api/frequencia/status', methods=['GET'])
-def api_frequencia_status():
-    """Verifica se a frequência de uma sala em uma data já foi registrada."""
-    try:
-        sala_id = request.args.get('sala_id')
-        data = request.args.get('data')
-
-        if not sala_id or not data:
-            return jsonify({"error": "Parâmetros sala_id e data são obrigatórios."}), 400
-        
-        # Busca qualquer registro para aquela sala e data
-        q = supabase.table('f_frequencia').select('id').eq('fk_sala_id', int(sala_id)).eq('data', data)
-        resp = q.limit(1).execute()
-        
-        registrada = len(resp.data or []) > 0
-        
-        return jsonify({"registrada": registrada}), 200
-    except Exception as e:
-        logging.exception("Erro ao verificar status da frequência.")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/frequencia/detalhes', methods=['GET'])
-def api_frequencia_detalhes():
-    """Busca detalhes de frequência por aluno e data (usado pelo modal do relatório)."""
-    try:
-        aluno_id = request.args.get('aluno_id')
-        data = request.args.get('data')
-
-        if not aluno_id or not data:
-            return jsonify({"error": "Parâmetros aluno_id e data são obrigatórios."}), 400
-            
-        resp = supabase.table('f_frequencia').select('*').eq('fk_aluno_id', int(aluno_id)).eq('data', data).single().execute()
-        
-        if not resp.data:
-            return jsonify({"error": "Registro não encontrado."}), 404
-            
-        return jsonify(resp.data), 200
-        
-    except Exception as e:
-        logging.exception("Erro ao buscar detalhes da frequência.")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/salvar_frequencia', methods=['POST'])
-def api_salvar_frequencia():
-    """Salva a frequência P/F em massa, utilizando UPSERT para evitar duplicatas."""
-    data_list = request.json
-    if not data_list or not isinstance(data_list, list):
-        return jsonify({"error": "Dados inválidos: Esperado uma lista de registros."}), 400
-        
-    registros_a_salvar = []
-    
-    for item in data_list:
-        try:
-            aluno_id_bigint = int(item['aluno_id'])
-            sala_id_bigint = int(item['sala_id'])
-            data = item['data']
-            status = item['status']
-            
-            # Garante que só P e F podem ser inseridos aqui, para não sobrescrever PA/PS/PAS
-            if status not in ['P', 'F']:
-                logging.warning(f"Status inválido {status} na frequência em massa. Ignorando.")
-                continue
-
-            registro = {
-                "fk_aluno_id": aluno_id_bigint,
-                "fk_sala_id": sala_id_bigint,
-                "data": data,
-                "status": status,
-                # Chaves de conflito para UPSERT:
-                "data": data, 
-                "fk_aluno_id": aluno_id_bigint
-            }
-            registros_a_salvar.append(registro)
-        except (ValueError, KeyError, TypeError):
-            continue
-            
-    if not registros_a_salvar:
-        return jsonify({"error": "Nenhum registro válido foi encontrado para salvar."}), 400
-        
-    try:
-        # Usa UPSERT (on_conflict na PK) para atualizar se já existir ou inserir se for novo.
-        response = supabase.table('f_frequencia').upsert(registros_a_salvar, on_conflict='fk_aluno_id, data').execute()
-        handle_supabase_response(response)
-        return jsonify({"message": f"{len(registros_a_salvar)} registros de frequência salvos/atualizados com sucesso!", "status": 201}), 201
-    except Exception as e:
-        logging.error(f"Erro no Supabase ao salvar frequência em massa: {e}")
-        return jsonify({"error": f"Erro interno do servidor: {e}", "status": 500}), 500
-
-@app.route('/api/salvar_atraso', methods=['POST'])
-def api_salvar_atraso():
-    """Salva um registro de PA ou PAS, atualizando o status se necessário."""
+@app.route('/api/vincular_disciplina_sala', methods=['POST'])
+def api_vincular_disciplina_sala():
     data = request.json
-    required_fields = ['aluno_id', 'sala_id', 'data', 'hora', 'motivo']
-    if not all(field in data for field in required_fields):
-        return jsonify({"error": "Dados incompletos: Aluno, Data, Hora e Motivo são obrigatórios."}, 400)
-    
-    aluno_id, sala_id = int(data['aluno_id']), int(data['sala_id'])
-    registro_data = data['data']
-    
+    sala_id = data.get('sala_id')
+    disciplinas_ids = data.get('disciplinas')
+    if not sala_id:
+        return jsonify({"error": "ID da sala é obrigatório.", "status": 400}), 400
     try:
-        # 1. Busca o status atual
-        resp = supabase.table('f_frequencia').select('status, id').eq('fk_aluno_id', aluno_id).eq('data', registro_data).maybe_single().execute()
-        current_status = resp.data['status'] if resp.data else None
-        
-        # 2. Determina o novo status combinado
-        novo_status = "PA"
-        if current_status == 'PS' or current_status == 'PAS': # Já tinha PS ou PAS
-            novo_status = 'PAS'
-        elif current_status == 'F': # Estava faltando, mas apareceu com atraso.
-             novo_status = 'PA'
-        elif current_status == 'P': # Estava presente. Vira PA.
-             novo_status = 'PA'
-
-        # 3. Prepara o registro (usa UPSERT)
-        registro = {
-            "fk_aluno_id": aluno_id,
-            "fk_sala_id": sala_id,
-            "data": registro_data,
-            "hora_atraso": data['hora'],
-            "motivo_atraso": data['motivo'],
-            "responsavel_atraso": data.get('responsavel'),
-            "telefone_atraso": data.get('telefone'),
-            "status": novo_status
-        }
-        
-        response = supabase.table('f_frequencia').upsert(registro, on_conflict='fk_aluno_id, data').execute()
-        handle_supabase_response(response)
-        
-        return jsonify({"message": f"Registro de Atraso salvo com sucesso! Status: {novo_status}", "status": 201}), 201
+        sala_id_bigint = int(sala_id)
+        # Limpa todos os vínculos existentes para esta sala
+        supabase.table('vinculos_disciplina_sala').delete().eq('fk_sala_id', sala_id_bigint).execute()
+        if disciplinas_ids:
+            # Insere os novos vínculos
+            registros = [{"fk_sala_id": sala_id_bigint, "fk_disciplina_id": d_id} for d_id in disciplinas_ids]
+            supabase.table('vinculos_disciplina_sala').insert(registros).execute()
+        return jsonify({"message": f"Vínculos da sala {sala_id} atualizados com sucesso.", "status": 200}), 200
     except Exception as e:
-        logging.error(f"Erro no Supabase ao salvar atraso: {e}")
-        return jsonify({"error": f"Erro interno do servidor: {e}", "status": 500}), 500
+        logging.error(f"Erro ao salvar vínculos de disciplina: {e}")
+        return jsonify({"error": f"Falha ao salvar vínculos de disciplina: {e}", "status": 500}), 500
 
-@app.route('/api/salvar_saida_antecipada', methods=['POST'])
-def api_salvar_saida_antecipada():
-    """Salva um registro de PS ou PAS, atualizando o status se necessário."""
+@app.route('/api/vincular_tutor_aluno', methods=['POST'])
+def api_vincular_tutor_aluno():
     data = request.json
-    required_fields = ['aluno_id', 'sala_id', 'data', 'hora', 'motivo']
-    if not all(field in data for field in required_fields):
-        return jsonify({"error": "Dados incompletos: Aluno, Data, Hora e Motivo são obrigatórios."}, 400)
-        
-    aluno_id, sala_id = int(data['aluno_id']), int(data['sala_id'])
-    registro_data = data['data']
-
+    tutor_id = data.get('tutor_id')
+    vinculos = data.get('vinculos')
+    sala_id = data.get('sala_id') # Adicionado para melhor escopo de desvinculação
+    
+    if not tutor_id or not sala_id:
+        return jsonify({"error": "ID do tutor e ID da sala são obrigatórios.", "status": 400}), 400
+    
     try:
-        # 1. Busca o status atual
-        resp = supabase.table('f_frequencia').select('status, id').eq('fk_aluno_id', aluno_id).eq('data', registro_data).maybe_single().execute()
-        current_status = resp.data['status'] if resp.data else None
+        tutor_id_bigint = int(tutor_id)
+        sala_id_bigint = int(sala_id)
         
-        # 2. Determina o novo status combinado
-        novo_status = "PS"
-        if current_status == 'PA' or current_status == 'PAS': # Já tinha PA ou PAS
-            novo_status = 'PAS'
-        elif current_status == 'F': # Estava faltando, mas saiu cedo (o que implica presença).
-             novo_status = 'PS'
-        elif current_status == 'P': # Estava presente. Vira PS.
-             novo_status = 'PS'
+        alunos_a_vincular_ids = [int(v['aluno_id']) for v in vinculos if 'aluno_id' in v]
         
-        # 3. Prepara o registro (usa UPSERT)
-        registro = {
-            "fk_aluno_id": aluno_id,
-            "fk_sala_id": sala_id,
-            "data": registro_data,
-            "hora_saida": data['hora'],
-            "motivo_saida": data['motivo'],
-            "responsavel_saida": data.get('responsavel'),
-            "telefone_saida": data.get('telefone'),
-            "status": novo_status
-        }
+        # 1. Desvincula o tutor de todos os alunos da sala que não estão na lista de vínculos atual
+        # Pega todos os alunos da sala que atualmente estão vinculados ao tutor_id passado
+        alunos_na_sala_raw = supabase.table('d_alunos').select('id').eq('sala_id', sala_id_bigint).eq('tutor_id', tutor_id_bigint).execute()
+        alunos_na_sala_ids = [int(a['id']) for a in handle_supabase_response(alunos_na_sala_raw)]
         
-        response = supabase.table('f_frequencia').upsert(registro, on_conflict='fk_aluno_id, data').execute()
-        handle_supabase_response(response)
+        # Alunos que estavam vinculados a este tutor e foram desmarcados
+        alunos_a_desvincular_ids = [a_id for a_id in alunos_na_sala_ids if a_id not in alunos_a_vincular_ids]
         
-        return jsonify({"message": f"Registro de Saída Antecipada salvo com sucesso! Status: {novo_status}", "status": 201}), 201
-    except Exception as e:
-        logging.error(f"Erro no Supabase ao salvar saída antecipada: {e}")
-        return jsonify({"error": f"Erro interno do servidor: {e}", "status": 500}), 500
-
-@app.route('/api/relatorio_frequencia_detalhada', methods=['GET'])
-def api_relatorio_frequencia_detalhada():
-    """Gera o relatório de frequência detalhada por sala e mês/ano."""
-    try:
-        sala_id = request.args.get('sala_id')
-        mes_ano_str = request.args.get('mes_ano') # Formato 'YYYY-MM'
-
-        if not sala_id or not mes_ano_str:
-            return jsonify({"error": "Filtros Sala e Mês/Ano são obrigatórios."}), 400
-
-        ano, mes = map(int, mes_ano_str.split('-'))
-        dias_no_mes = monthrange(ano, mes)[1]
-        data_inicio = f"{ano}-{mes:02d}-01"
-        data_fim = f"{ano}-{mes:02d}-{dias_no_mes:02d}"
+        if alunos_a_desvincular_ids:
+            logging.info(f"Desvinculando alunos: {alunos_a_desvincular_ids} da sala {sala_id_bigint} do tutor {tutor_id_bigint}")
+            supabase.table('d_alunos').update({'tutor_id': None}).in_('id', alunos_a_desvincular_ids).execute()
         
-        sala_id_int = int(sala_id)
-
-        # 1. Busca todos os alunos da sala
-        resp_alunos = supabase.table('d_alunos').select('id, nome').eq('sala_id', sala_id_int).order('nome').execute()
-        alunos = handle_supabase_response(resp_alunos)
-        
-        aluno_ids = [a['id'] for a in alunos]
-        
-        if not aluno_ids:
-             return jsonify({"error": "Nenhum aluno encontrado nesta sala."}), 404
-
-        # 2. Busca todos os registros de frequência para esses alunos no período
-        resp_frequencia = supabase.table('f_frequencia').select('*').in_('fk_aluno_id', aluno_ids).gte('data', data_inicio).lte('data', data_fim).execute()
-        frequencia_raw = handle_supabase_response(resp_frequencia)
-
-        # Mapeia registros por (aluno_id, data)
-        frequencia_map = {}
-        for reg in frequencia_raw:
-            key = (reg['fk_aluno_id'], reg['data'])
-            frequencia_map[key] = reg
-
-        # 3. Monta a matriz de relatório
-        relatorio = []
-        dias_uteis = [datetime(ano, mes, d).strftime('%Y-%m-%d') for d in range(1, dias_no_mes + 1)]
-
-        for aluno in alunos:
-            aluno_row = {'id': aluno['id'], 'nome': aluno['nome'], 'dias': []}
-            
-            for data in dias_uteis:
-                key = (aluno['id'], data)
-                registro = frequencia_map.get(key)
+        # 2. Vincula o tutor aos alunos selecionados
+        if alunos_a_vincular_ids:
+            # O Supabase Python SDK não suporta 'update().in_()' para a lista de alunos diretamente. 
+            # Fazemos um loop para garantir a atomicidade por aluno.
+            for aluno_id in alunos_a_vincular_ids:
+                supabase.table('d_alunos').update({'tutor_id': tutor_id_bigint}).eq('id', aluno_id).execute()
                 
-                status_final = '?' # Não registrado / Fim de semana, etc.
-                detalhes = None
+        return jsonify({"message": "Vínculos atualizados com sucesso.", "status": 200}), 200
+    except Exception as e:
+        logging.error(f"Erro ao vincular tutor/aluno: {e}")
+        return jsonify({"error": f"Falha ao vincular tutor/aluno: {e}", "status": 500}), 500
 
-                if registro:
-                    status_final = registro['status']
-                    if status_final in ['PA', 'PS', 'PAS']:
-                        # Coleta os detalhes para o modal
-                        detalhes = {
-                            'hora_atraso': registro.get('hora_atraso'),
-                            'motivo_atraso': registro.get('motivo_atraso'),
-                            'responsavel_atraso': registro.get('responsavel_atraso'),
-                            'telefone_atraso': registro.get('telefone_atraso'),
-                            'hora_saida': registro.get('hora_saida'),
-                            'motivo_saida': registro.get('motivo_saida'),
-                            'responsavel_saida': registro.get('responsavel_saida'),
-                            'telefone_saida': registro.get('telefone_saida'),
-                        }
+@app.route('/api/ocorrencia_detalhes')
+def ocorrencia_detalhes():
+    numero = request.args.get('numero')
+    if not numero:
+        return jsonify({'error': 'Número da ocorrência não fornecido'}), 400
 
-                aluno_row['dias'].append({'data': data, 'status': status_final, 'detalhes': detalhes})
-            
-            relatorio.append(aluno_row)
+    try:
+        # Consulta ao Supabase na tabela de ocorrências, buscando as referências
+        select_query_detail = "numero, data_hora, descricao, atendimento_professor, atendimento_tutor, atendimento_coordenacao, atendimento_gestao, dt_atendimento_tutor, dt_atendimento_coordenacao, dt_atendimento_gestao, aluno_nome, tutor_nome, professor_id(nome), sala_id(sala), status"
+        resp = supabase.table('ocorrencias').select(select_query_detail).eq('numero', numero).single().execute()
+
+        occ = resp.data
+
+        if occ is None:
+            return jsonify({'error': 'Ocorrência não encontrada'}), 404
+
+        # Extrai nomes aninhados
+        professor_nome = occ.get('professor_id', {}).get('nome', 'N/A')
+        sala_nome = occ.get('sala_id', {}).get('sala', 'N/A')
         
+        # Retorna os campos esperados pelo JS
         return jsonify({
-            'dias_mes': dias_no_mes,
-            'relatorio': relatorio,
-            'dias_uteis': dias_uteis # Lista de datas YYYY-MM-DD
+            'numero': occ.get('numero'),
+            'aluno_nome': occ.get('aluno_nome'),
+            'sala_nome': sala_nome,
+            'tutor_nome': occ.get('tutor_nome'),
+            'professor_nome': professor_nome,
+            'status': occ.get('status'),
+            'descricao': occ.get('descricao'),
+            'atendimento_professor': occ.get('atendimento_professor'),
+            'atendimento_tutor': occ.get('atendimento_tutor'),
+            'atendimento_coordenacao': occ.get('atendimento_coordenacao'),
+            'atendimento_gestao': occ.get('atendimento_gestao')
+        })
+    except Exception as e:
+        logging.exception(f"Erro ao consultar Supabase para detalhes da ocorrência {numero}")
+        return jsonify({'error': f'Erro ao consultar Supabase: {str(e)}'}), 500
+
+@app.route('/api/relatorio_estatistico', methods=['GET'])
+def api_relatorio_estatistico():
+    """Gera o JSON de estatísticas de ocorrências."""
+    try:
+        # 1. Obter todas as ocorrências detalhadas
+        resp_occ = supabase.table('ocorrencias').select(
+            "numero, data_hora, status, tipo, tutor_id, sala_id, "
+            "solicitado_tutor, solicitado_coordenacao, solicitado_gestao, "
+            "atendimento_tutor, atendimento_coordenacao, atendimento_gestao, "
+            "dt_atendimento_gestao" # Usamos o dt_atendimento_gestao como data de fechamento final
+        ).execute()
+        ocorrencias = handle_supabase_response(resp_occ)
+        
+        # 2. Obter mapeamentos de Sala e Tutor
+        resp_salas = supabase.table('d_salas').select('id, sala').execute()
+        salas_map = {str(s['id']): s['sala'] for s in handle_supabase_response(resp_salas)}
+        
+        resp_tutores = supabase.table('d_funcionarios').select('id, nome').eq('is_tutor', True).execute()
+        tutores_map = {str(t['id']): t['nome'] for t in handle_supabase_response(resp_tutores)}
+
+        # 3. Agregação de dados
+        total = len(ocorrencias)
+        abertas = 0
+        finalizadas = 0
+        
+        tipos_count = {}
+        salas_stats = {} # Por Sala: {total, menos_7d, mais_7d, nao_respondidas}
+        tutores_stats = {} # Por Tutor: {total, finalizadas, abertas, tempos_resposta: []}
+        tempo_resposta_faixas = {
+            '1-7 dias': 0, '8-30 dias': 0, 'mais de 30 dias': 0, 'não finalizadas': 0
+        }
+        ocorrencias_por_mes = {} # {mes_ano: count}
+        
+        hoje = datetime.now()
+        
+        for occ in ocorrencias:
+            occ_status = occ.get('status')
+            occ_data_hora = occ.get('data_hora')
+            occ_tipo = occ.get('tipo', 'Outros')
+            sala_id_str = str(occ.get('sala_id'))
+            tutor_id_str = str(occ.get('tutor_id')) if occ.get('tutor_id') else None
+            
+            # 3.1. Totais e Tipos
+            if occ_status == 'Aberta':
+                abertas += 1
+            elif occ_status == 'Finalizada':
+                finalizadas += 1
+            
+            tipos_count[occ_tipo] = tipos_count.get(occ_tipo, 0) + 1
+            
+            # 3.2. Por Mês
+            if occ_data_hora:
+                # Tratamento para datetime.fromisoformat: 
+                try:
+                    dt = datetime.fromisoformat(occ_data_hora.replace('Z', '+00:00'))
+                    mes_ano_key = dt.strftime("%Y-%m")
+                    ocorrencias_por_mes[mes_ano_key] = ocorrencias_por_mes.get(mes_ano_key, 0) + 1
+                except Exception:
+                    logging.warning(f"Data de ocorrência inválida: {occ_data_hora}")
+            
+            # 3.3. Estatísticas por Sala
+            if sala_id_str in salas_map:
+                sala_name = salas_map[sala_id_str]
+                if sala_id_str not in salas_stats:
+                    salas_stats[sala_id_str] = {'sala': sala_name, 'total': 0, 'menos_7d': 0, 'mais_7d': 0, 'nao_respondidas': 0}
+                salas_stats[sala_id_str]['total'] += 1
+                
+                if occ_status == 'Aberta' and occ_data_hora:
+                    try:
+                        dt_abertura = datetime.fromisoformat(occ_data_hora.replace('Z', '+00:00'))
+                        dias_aberta = (hoje - dt_abertura).days
+                        
+                        if dias_aberta <= 7:
+                            salas_stats[sala_id_str]['menos_7d'] += 1
+                        else:
+                            salas_stats[sala_id_str]['mais_7d'] += 1
+                            
+                        # Verifica se é "Não Respondida"
+                        solicitado = (_to_bool(occ.get('solicitado_tutor')) or 
+                                      _to_bool(occ.get('solicitado_coordenacao')) or 
+                                      _to_bool(occ.get('solicitado_gestao')))
+                        
+                        atendimento_tutor = occ.get('atendimento_tutor')
+                        atendimento_coord = occ.get('atendimento_coordenacao')
+                        atendimento_gestao = occ.get('atendimento_gestao')
+                        
+                        respondido = (
+                            (atendimento_tutor and atendimento_tutor != DEFAULT_AUTOTEXT) or
+                            (atendimento_coord and atendimento_coord != DEFAULT_AUTOTEXT) or
+                            (atendimento_gestao and atendimento_gestao != DEFAULT_AUTOTEXT)
+                        )
+                        
+                        if solicitado and not respondido:
+                            salas_stats[sala_id_str]['nao_respondidas'] += 1
+                    except Exception:
+                        logging.warning(f"Erro no cálculo de dias abertas para ocorrência {occ.get('numero')}")
+
+
+            # 3.4. Estatísticas por Tutor
+            if tutor_id_str and tutor_id_str in tutores_map:
+                tutor_name = tutores_map[tutor_id_str]
+                if tutor_id_str not in tutores_stats:
+                    tutores_stats[tutor_id_str] = {'tutor': tutor_name, 'total': 0, 'finalizadas': 0, 'abertas': 0, 'tempos_resposta': []}
+                
+                tutores_stats[tutor_id_str]['total'] += 1
+                if occ_status == 'Finalizada':
+                    tutores_stats[tutor_id_str]['finalizadas'] += 1
+                    
+                    # Calcula o tempo de resposta
+                    dias_resp = calcular_dias_resposta(occ_data_hora, occ.get('dt_atendimento_gestao'))
+                    if dias_resp is not None:
+                        tutores_stats[tutor_id_str]['tempos_resposta'].append(dias_resp)
+                        
+                        if dias_resp <= 7:
+                            tempo_resposta_faixas['1-7 dias'] += 1
+                        elif dias_resp <= 30:
+                            tempo_resposta_faixas['8-30 dias'] += 1
+                        else:
+                            tempo_resposta_faixas['mais de 30 dias'] += 1
+                else:
+                    tutores_stats[tutor_id_str]['abertas'] += 1
+                    tempo_resposta_faixas['não finalizadas'] += 1
+
+        # 4. Finalização dos cálculos e formatação
+        
+        # Média de dias de resposta por tutor
+        final_tutores = []
+        for t_id, t_data in tutores_stats.items():
+            t_data['media_dias_resposta'] = sum(t_data['tempos_resposta']) / len(t_data['tempos_resposta']) if t_data['tempos_resposta'] else 0
+            # Formatação para o JS
+            final_tutores.append({
+                'tutor': t_data['tutor'],
+                'total': t_data['total'],
+                'finalizadas': t_data['finalizadas'],
+                'abertas': t_data['abertas'],
+                'media_dias_resposta': round(t_data['media_dias_resposta'], 1) if t_data['media_dias_resposta'] else 0
+            })
+            
+        # Formatação do Tempo de Resposta para Gráfico
+        tempo_resp_grafico = {
+            'labels': list(tempo_resposta_faixas.keys()),
+            'valores': list(tempo_resposta_faixas.values())
+        }
+        
+        # Formatação Ocorrências por Mês para Gráfico
+        meses_ordenados = sorted(ocorrencias_por_mes.keys())
+        ocorrencias_por_mes_grafico = {
+            'labels': [datetime.strptime(m, "%Y-%m").strftime("%b/%y") for m in meses_ordenados],
+            'valores': [ocorrencias_por_mes[m] for m in meses_ordenados]
+        }
+
+        # 5. Retorno do JSON final
+        return jsonify({
+            'total': total,
+            'abertas': abertas,
+            'finalizadas': finalizadas,
+            'tipos': tipos_count,
+            'por_sala': list(salas_stats.values()),
+            'por_tutor': final_tutores,
+            'tempo_resposta': tempo_resp_grafico,
+            'ocorrencias_por_mes': ocorrencias_por_mes_grafico
         }), 200
 
     except Exception as e:
-        logging.exception("Erro ao gerar relatório de frequência detalhada")
-        return jsonify({"error": f"Erro ao gerar relatório: {e}"}), 500
+        logging.exception("Erro ao gerar relatório estatístico")
+        # Retorna um JSON de erro válido
+        return jsonify({"error": f"Erro interno ao gerar relatório: {e}"}), 500
 
+
+@app.route('/api/vincular_disciplina_sala', methods=['POST'])
+def api_vincular_disciplina_sala():
+    data = request.json
+    sala_id = data.get('sala_id')
+    disciplinas_ids = data.get('disciplinas')
+    if not sala_id:
+        return jsonify({"error": "ID da sala é obrigatório.", "status": 400}), 400
+    try:
+        sala_id_bigint = int(sala_id)
+        # Limpa todos os vínculos existentes para esta sala
+        supabase.table('vinculos_disciplina_sala').delete().eq('fk_sala_id', sala_id_bigint).execute()
+        if disciplinas_ids:
+            # Insere os novos vínculos
+            registros = [{"fk_sala_id": sala_id_bigint, "fk_disciplina_id": d_id} for d_id in disciplinas_ids]
+            supabase.table('vinculos_disciplina_sala').insert(registros).execute()
+        return jsonify({"message": f"Vínculos da sala {sala_id} atualizados com sucesso.", "status": 200}), 200
+    except Exception as e:
+        logging.error(f"Erro ao salvar vínculos de disciplina: {e}")
+        return jsonify({"error": f"Falha ao salvar vínculos de disciplina: {e}", "status": 500}), 500
+
+@app.route('/api/vincular_tutor_aluno', methods=['POST'])
+def api_vincular_tutor_aluno():
+    data = request.json
+    tutor_id = data.get('tutor_id')
+    vinculos = data.get('vinculos')
+    sala_id = data.get('sala_id') # Adicionado para melhor escopo de desvinculação
+    
+    if not tutor_id or not sala_id:
+        return jsonify({"error": "ID do tutor e ID da sala são obrigatórios.", "status": 400}), 400
+    
+    try:
+        tutor_id_bigint = int(tutor_id)
+        sala_id_bigint = int(sala_id)
+        
+        alunos_a_vincular_ids = [int(v['aluno_id']) for v in vinculos if 'aluno_id' in v]
+        
+        # 1. Desvincula o tutor de todos os alunos da sala que não estão na lista de vínculos atual
+        # Pega todos os alunos da sala que atualmente estão vinculados ao tutor_id passado
+        alunos_na_sala_raw = supabase.table('d_alunos').select('id').eq('sala_id', sala_id_bigint).eq('tutor_id', tutor_id_bigint).execute()
+        alunos_na_sala_ids = [int(a['id']) for a in handle_supabase_response(alunos_na_sala_raw)]
+        
+        # Alunos que estavam vinculados a este tutor e foram desmarcados
+        alunos_a_desvincular_ids = [a_id for a_id in alunos_na_sala_ids if a_id not in alunos_a_vincular_ids]
+        
+        if alunos_a_desvincular_ids:
+            logging.info(f"Desvinculando alunos: {alunos_a_desvincular_ids} da sala {sala_id_bigint} do tutor {tutor_id_bigint}")
+            supabase.table('d_alunos').update({'tutor_id': None}).in_('id', alunos_a_desvincular_ids).execute()
+        
+        # 2. Vincula o tutor aos alunos selecionados
+        if alunos_a_vincular_ids:
+            # O Supabase Python SDK não suporta 'update().in_()' para a lista de alunos diretamente. 
+            # Fazemos um loop para garantir a atomicidade por aluno.
+            for aluno_id in alunos_a_vincular_ids:
+                supabase.table('d_alunos').update({'tutor_id': tutor_id_bigint}).eq('id', aluno_id).execute()
+                
+        return jsonify({"message": "Vínculos atualizados com sucesso.", "status": 200}), 200
+    except Exception as e:
+        logging.error(f"Erro ao vincular tutor/aluno: {e}")
+        return jsonify({"error": f"Falha ao vincular tutor/aluno: {e}", "status": 500}), 500
+
+@app.route('/api/ocorrencia_detalhes')
+def ocorrencia_detalhes():
+    numero = request.args.get('numero')
+    if not numero:
+        return jsonify({'error': 'Número da ocorrência não fornecido'}), 400
+
+    try:
+        # Consulta ao Supabase na tabela de ocorrências, buscando as referências
+        select_query_detail = "numero, data_hora, descricao, atendimento_professor, atendimento_tutor, atendimento_coordenacao, atendimento_gestao, dt_atendimento_tutor, dt_atendimento_coordenacao, dt_atendimento_gestao, aluno_nome, tutor_nome, professor_id(nome), sala_id(sala), status"
+        resp = supabase.table('ocorrencias').select(select_query_detail).eq('numero', numero).single().execute()
+
+        occ = resp.data
+
+        if occ is None:
+            return jsonify({'error': 'Ocorrência não encontrada'}), 404
+
+        # Extrai nomes aninhados
+        professor_nome = occ.get('professor_id', {}).get('nome', 'N/A')
+        sala_nome = occ.get('sala_id', {}).get('sala', 'N/A')
+        
+        # Retorna os campos esperados pelo JS
+        return jsonify({
+            'numero': occ.get('numero'),
+            'aluno_nome': occ.get('aluno_nome'),
+            'sala_nome': sala_nome,
+            'tutor_nome': occ.get('tutor_nome'),
+            'professor_nome': professor_nome,
+            'status': occ.get('status'),
+            'descricao': occ.get('descricao'),
+            'atendimento_professor': occ.get('atendimento_professor'),
+            'atendimento_tutor': occ.get('atendimento_tutor'),
+            'atendimento_coordenacao': occ.get('atendimento_coordenacao'),
+            'atendimento_gestao': occ.get('atendimento_gestao')
+        })
+    except Exception as e:
+        logging.exception(f"Erro ao consultar Supabase para detalhes da ocorrência {numero}")
+        return jsonify({'error': f'Erro ao consultar Supabase: {str(e)}'}), 500
+
+
+@app.route('/api/vincular_disciplina_sala', methods=['POST'])
+def api_vincular_disciplina_sala():
+    data = request.json
+    sala_id = data.get('sala_id')
+    disciplinas_ids = data.get('disciplinas')
+    if not sala_id:
+        return jsonify({"error": "ID da sala é obrigatório.", "status": 400}), 400
+    try:
+        sala_id_bigint = int(sala_id)
+        # Limpa todos os vínculos existentes para esta sala
+        supabase.table('vinculos_disciplina_sala').delete().eq('fk_sala_id', sala_id_bigint).execute()
+        if disciplinas_ids:
+            # Insere os novos vínculos
+            registros = [{"fk_sala_id": sala_id_bigint, "fk_disciplina_id": d_id} for d_id in disciplinas_ids]
+            supabase.table('vinculos_disciplina_sala').insert(registros).execute()
+        return jsonify({"message": f"Vínculos da sala {sala_id} atualizados com sucesso.", "status": 200}), 200
+    except Exception as e:
+        logging.error(f"Erro ao salvar vínculos de disciplina: {e}")
+        return jsonify({"error": f"Falha ao salvar vínculos de disciplina: {e}", "status": 500}), 500
+
+@app.route('/api/vincular_tutor_aluno', methods=['POST'])
+def api_vincular_tutor_aluno():
+    data = request.json
+    tutor_id = data.get('tutor_id')
+    vinculos = data.get('vinculos')
+    sala_id = data.get('sala_id') # Adicionado para melhor escopo de desvinculação
+    
+    if not tutor_id or not sala_id:
+        return jsonify({"error": "ID do tutor e ID da sala são obrigatórios.", "status": 400}), 400
+    
+    try:
+        tutor_id_bigint = int(tutor_id)
+        sala_id_bigint = int(sala_id)
+        
+        alunos_a_vincular_ids = [int(v['aluno_id']) for v in vinculos if 'aluno_id' in v]
+        
+        # 1. Desvincula o tutor de todos os alunos da sala que não estão na lista de vínculos atual
+        # Pega todos os alunos da sala que atualmente estão vinculados ao tutor_id passado
+        alunos_na_sala_raw = supabase.table('d_alunos').select('id').eq('sala_id', sala_id_bigint).eq('tutor_id', tutor_id_bigint).execute()
+        alunos_na_sala_ids = [int(a['id']) for a in handle_supabase_response(alunos_na_sala_raw)]
+        
+        # Alunos que estavam vinculados a este tutor e foram desmarcados
+        alunos_a_desvincular_ids = [a_id for a_id in alunos_na_sala_ids if a_id not in alunos_a_vincular_ids]
+        
+        if alunos_a_desvincular_ids:
+            logging.info(f"Desvinculando alunos: {alunos_a_desvincular_ids} da sala {sala_id_bigint} do tutor {tutor_id_bigint}")
+            supabase.table('d_alunos').update({'tutor_id': None}).in_('id', alunos_a_desvincular_ids).execute()
+        
+        # 2. Vincula o tutor aos alunos selecionados
+        if alunos_a_vincular_ids:
+            # O Supabase Python SDK não suporta 'update().in_()' para a lista de alunos diretamente. 
+            # Fazemos um loop para garantir a atomicidade por aluno.
+            for aluno_id in alunos_a_vincular_ids:
+                supabase.table('d_alunos').update({'tutor_id': tutor_id_bigint}).eq('id', aluno_id).execute()
+                
+        return jsonify({"message": "Vínculos atualizados com sucesso.", "status": 200}), 200
+    except Exception as e:
+        logging.error(f"Erro ao vincular tutor/aluno: {e}")
+        return jsonify({"error": f"Falha ao vincular tutor/aluno: {e}", "status": 500}), 500
+
+@app.route('/api/ocorrencia_detalhes')
+def ocorrencia_detalhes():
+    numero = request.args.get('numero')
+    if not numero:
+        return jsonify({'error': 'Número da ocorrência não fornecido'}), 400
+
+    try:
+        # Consulta ao Supabase na tabela de ocorrências, buscando as referências
+        select_query_detail = "numero, data_hora, descricao, atendimento_professor, atendimento_tutor, atendimento_coordenacao, atendimento_gestao, dt_atendimento_tutor, dt_atendimento_coordenacao, dt_atendimento_gestao, aluno_nome, tutor_nome, professor_id(nome), sala_id(sala), status"
+        resp = supabase.table('ocorrencias').select(select_query_detail).eq('numero', numero).single().execute()
+
+        occ = resp.data
+
+        if occ is None:
+            return jsonify({'error': 'Ocorrência não encontrada'}), 404
+
+        # Extrai nomes aninhados
+        professor_nome = occ.get('professor_id', {}).get('nome', 'N/A')
+        sala_nome = occ.get('sala_id', {}).get('sala', 'N/A')
+        
+        # Retorna os campos esperados pelo JS
+        return jsonify({
+            'numero': occ.get('numero'),
+            'aluno_nome': occ.get('aluno_nome'),
+            'sala_nome': sala_nome,
+            'tutor_nome': occ.get('tutor_nome'),
+            'professor_nome': professor_nome,
+            'status': occ.get('status'),
+            'descricao': occ.get('descricao'),
+            'atendimento_professor': occ.get('atendimento_professor'),
+            'atendimento_tutor': occ.get('atendimento_tutor'),
+            'atendimento_coordenacao': occ.get('atendimento_coordenacao'),
+            'atendimento_gestao': occ.get('atendimento_gestao')
+        })
+    except Exception as e:
+        logging.exception(f"Erro ao consultar Supabase para detalhes da ocorrência {numero}")
+        return jsonify({'error': f'Erro ao consultar Supabase: {str(e)}'}), 500
+
+
+@app.route('/api/vincular_disciplina_sala', methods=['POST'])
+def api_vincular_disciplina_sala():
+    data = request.json
+    sala_id = data.get('sala_id')
+    disciplinas_ids = data.get('disciplinas')
+    if not sala_id:
+        return jsonify({"error": "ID da sala é obrigatório.", "status": 400}), 400
+    try:
+        sala_id_bigint = int(sala_id)
+        # Limpa todos os vínculos existentes para esta sala
+        supabase.table('vinculos_disciplina_sala').delete().eq('fk_sala_id', sala_id_bigint).execute()
+        if disciplinas_ids:
+            # Insere os novos vínculos
+            registros = [{"fk_sala_id": sala_id_bigint, "fk_disciplina_id": d_id} for d_id in disciplinas_ids]
+            supabase.table('vinculos_disciplina_sala').insert(registros).execute()
+        return jsonify({"message": f"Vínculos da sala {sala_id} atualizados com sucesso.", "status": 200}), 200
+    except Exception as e:
+        logging.error(f"Erro ao salvar vínculos de disciplina: {e}")
+        return jsonify({"error": f"Falha ao salvar vínculos de disciplina: {e}", "status": 500}), 500
+
+@app.route('/api/vincular_tutor_aluno', methods=['POST'])
+def api_vincular_tutor_aluno():
+    data = request.json
+    tutor_id = data.get('tutor_id')
+    vinculos = data.get('vinculos')
+    sala_id = data.get('sala_id') # Adicionado para melhor escopo de desvinculação
+    
+    if not tutor_id or not sala_id:
+        return jsonify({"error": "ID do tutor e ID da sala são obrigatórios.", "status": 400}), 400
+    
+    try:
+        tutor_id_bigint = int(tutor_id)
+        sala_id_bigint = int(sala_id)
+        
+        alunos_a_vincular_ids = [int(v['aluno_id']) for v in vinculos if 'aluno_id' in v]
+        
+        # 1. Desvincula o tutor de todos os alunos da sala que não estão na lista de vínculos atual
+        # Pega todos os alunos da sala que atualmente estão vinculados ao tutor_id passado
+        alunos_na_sala_raw = supabase.table('d_alunos').select('id').eq('sala_id', sala_id_bigint).eq('tutor_id', tutor_id_bigint).execute()
+        alunos_na_sala_ids = [int(a['id']) for a in handle_supabase_response(alunos_na_sala_raw)]
+        
+        # Alunos que estavam vinculados a este tutor e foram desmarcados
+        alunos_a_desvincular_ids = [a_id for a_id in alunos_na_sala_ids if a_id not in alunos_a_vincular_ids]
+        
+        if alunos_a_desvincular_ids:
+            logging.info(f"Desvinculando alunos: {alunos_a_desvincular_ids} da sala {sala_id_bigint} do tutor {tutor_id_bigint}")
+            supabase.table('d_alunos').update({'tutor_id': None}).in_('id', alunos_a_desvincular_ids).execute()
+        
+        # 2. Vincula o tutor aos alunos selecionados
+        if alunos_a_vincular_ids:
+            # O Supabase Python SDK não suporta 'update().in_()' para a lista de alunos diretamente. 
+            # Fazemos um loop para garantir a atomicidade por aluno.
+            for aluno_id in alunos_a_vincular_ids:
+                supabase.table('d_alunos').update({'tutor_id': tutor_id_bigint}).eq('id', aluno_id).execute()
+                
+        return jsonify({"message": "Vínculos atualizados com sucesso.", "status": 200}), 200
+    except Exception as e:
+        logging.error(f"Erro ao vincular tutor/aluno: {e}")
+        return jsonify({"error": f"Falha ao vincular tutor/aluno: {e}", "status": 500}), 500
+
+@app.route('/api/ocorrencia_detalhes')
+def ocorrencia_detalhes():
+    numero = request.args.get('numero')
+    if not numero:
+        return jsonify({'error': 'Número da ocorrência não fornecido'}), 400
+
+    try:
+        # Consulta ao Supabase na tabela de ocorrências, buscando as referências
+        select_query_detail = "numero, data_hora, descricao, atendimento_professor, atendimento_tutor, atendimento_coordenacao, atendimento_gestao, dt_atendimento_tutor, dt_atendimento_coordenacao, dt_atendimento_gestao, aluno_nome, tutor_nome, professor_id(nome), sala_id(sala), status"
+        resp = supabase.table('ocorrencias').select(select_query_detail).eq('numero', numero).single().execute()
+
+        occ = resp.data
+
+        if occ is None:
+            return jsonify({'error': 'Ocorrência não encontrada'}), 404
+
+        # Extrai nomes aninhados
+        professor_nome = occ.get('professor_id', {}).get('nome', 'N/A')
+        sala_nome = occ.get('sala_id', {}).get('sala', 'N/A')
+        
+        # Retorna os campos esperados pelo JS
+        return jsonify({
+            'numero': occ.get('numero'),
+            'aluno_nome': occ.get('aluno_nome'),
+            'sala_nome': sala_nome,
+            'tutor_nome': occ.get('tutor_nome'),
+            'professor_nome': professor_nome,
+            'status': occ.get('status'),
+            'descricao': occ.get('descricao'),
+            'atendimento_professor': occ.get('atendimento_professor'),
+            'atendimento_tutor': occ.get('atendimento_tutor'),
+            'atendimento_coordenacao': occ.get('atendimento_coordenacao'),
+            'atendimento_gestao': occ.get('atendimento_gestao')
+        })
+    except Exception as e:
+        logging.exception(f"Erro ao consultar Supabase para detalhes da ocorrência {numero}")
+        return jsonify({'error': f'Erro ao consultar Supabase: {str(e)}'}), 500
+
+
+@app.route('/api/vincular_disciplina_sala', methods=['POST'])
+def api_vincular_disciplina_sala():
+    data = request.json
+    sala_id = data.get('sala_id')
+    disciplinas_ids = data.get('disciplinas')
+    if not sala_id:
+        return jsonify({"error": "ID da sala é obrigatório.", "status": 400}), 400
+    try:
+        sala_id_bigint = int(sala_id)
+        # Limpa todos os vínculos existentes para esta sala
+        supabase.table('vinculos_disciplina_sala').delete().eq('fk_sala_id', sala_id_bigint).execute()
+        if disciplinas_ids:
+            # Insere os novos vínculos
+            registros = [{"fk_sala_id": sala_id_bigint, "fk_disciplina_id": d_id} for d_id in disciplinas_ids]
+            supabase.table('vinculos_disciplina_sala').insert(registros).execute()
+        return jsonify({"message": f"Vínculos da sala {sala_id} atualizados com sucesso.", "status": 200}), 200
+    except Exception as e:
+        logging.error(f"Erro ao salvar vínculos de disciplina: {e}")
+        return jsonify({"error": f"Falha ao salvar vínculos de disciplina: {e}", "status": 500}), 500
+
+@app.route('/api/vincular_tutor_aluno', methods=['POST'])
+def api_vincular_tutor_aluno():
+    data = request.json
+    tutor_id = data.get('tutor_id')
+    vinculos = data.get('vinculos')
+    sala_id = data.get('sala_id') # Adicionado para melhor escopo de desvinculação
+    
+    if not tutor_id or not sala_id:
+        return jsonify({"error": "ID do tutor e ID da sala são obrigatórios.", "status": 400}), 400
+    
+    try:
+        tutor_id_bigint = int(tutor_id)
+        sala_id_bigint = int(sala_id)
+        
+        alunos_a_vincular_ids = [int(v['aluno_id']) for v in vinculos if 'aluno_id' in v]
+        
+        # 1. Desvincula o tutor de todos os alunos da sala que não estão na lista de vínculos atual
+        # Pega todos os alunos da sala que atualmente estão vinculados ao tutor_id passado
+        alunos_na_sala_raw = supabase.table('d_alunos').select('id').eq('sala_id', sala_id_bigint).eq('tutor_id', tutor_id_bigint).execute()
+        alunos_na_sala_ids = [int(a['id']) for a in handle_supabase_response(alunos_na_sala_raw)]
+        
+        # Alunos que estavam vinculados a este tutor e foram desmarcados
+        alunos_a_desvincular_ids = [a_id for a_id in alunos_na_sala_ids if a_id not in alunos_a_vincular_ids]
+        
+        if alunos_a_desvincular_ids:
+            logging.info(f"Desvinculando alunos: {alunos_a_desvincular_ids} da sala {sala_id_bigint} do tutor {tutor_id_bigint}")
+            supabase.table('d_alunos').update({'tutor_id': None}).in_('id', alunos_a_desvincular_ids).execute()
+        
+        # 2. Vincula o tutor aos alunos selecionados
+        if alunos_a_vincular_ids:
+            # O Supabase Python SDK não suporta 'update().in_()' para a lista de alunos diretamente. 
+            # Fazemos um loop para garantir a atomicidade por aluno.
+            for aluno_id in alunos_a_vincular_ids:
+                supabase.table('d_alunos').update({'tutor_id': tutor_id_bigint}).eq('id', aluno_id).execute()
+                
+        return jsonify({"message": "Vínculos atualizados com sucesso.", "status": 200}), 200
+    except Exception as e:
+        logging.error(f"Erro ao vincular tutor/aluno: {e}")
+        return jsonify({"error": f"Falha ao vincular tutor/aluno: {e}", "status": 500}), 500
+
+@app.route('/api/ocorrencia_detalhes')
+def ocorrencia_detalhes():
+    numero = request.args.get('numero')
+    if not numero:
+        return jsonify({'error': 'Número da ocorrência não fornecido'}), 400
+
+    try:
+        # Consulta ao Supabase na tabela de ocorrências, buscando as referências
+        select_query_detail = "numero, data_hora, descricao, atendimento_professor, atendimento_tutor, atendimento_coordenacao, atendimento_gestao, dt_atendimento_tutor, dt_atendimento_coordenacao, dt_atendimento_gestao, aluno_nome, tutor_nome, professor_id(nome), sala_id(sala), status"
+        resp = supabase.table('ocorrencias').select(select_query_detail).eq('numero', numero).single().execute()
+
+        occ = resp.data
+
+        if occ is None:
+            return jsonify({'error': 'Ocorrência não encontrada'}), 404
+
+        # Extrai nomes aninhados
+        professor_nome = occ.get('professor_id', {}).get('nome', 'N/A')
+        sala_nome = occ.get('sala_id', {}).get('sala', 'N/A')
+        
+        # Retorna os campos esperados pelo JS
+        return jsonify({
+            'numero': occ.get('numero'),
+            'aluno_nome': occ.get('aluno_nome'),
+            'sala_nome': sala_nome,
+            'tutor_nome': occ.get('tutor_nome'),
+            'professor_nome': professor_nome,
+            'status': occ.get('status'),
+            'descricao': occ.get('descricao'),
+            'atendimento_professor': occ.get('atendimento_professor'),
+            'atendimento_tutor': occ.get('atendimento_tutor'),
+            'atendimento_coordenacao': occ.get('atendimento_coordenacao'),
+            'atendimento_gestao': occ.get('atendimento_gestao')
+        })
+    except Exception as e:
+        logging.exception(f"Erro ao consultar Supabase para detalhes da ocorrência {numero}")
+        return jsonify({'error': f'Erro ao consultar Supabase: {str(e)}'}), 500
 
 
 # =========================================================
@@ -1824,6 +2243,3 @@ def api_relatorio_frequencia_detalhada():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-
-
-
