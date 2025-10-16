@@ -1251,6 +1251,167 @@ def api_finalizar_devolucao_equipamento():
         logging.error(f"Erro ao finalizar devolução: {e}")
         return jsonify({"error": f"Erro interno ao finalizar devolução: {e}", "status": 500}), 500
 
+@app.route('/api/relatorio_estatistico', methods=['GET'])
+def api_relatorio_estatistico():
+    """Gera o JSON de estatísticas de ocorrências."""
+    try:
+        # 1. Obter todas as ocorrências detalhadas
+        resp_occ = supabase.table('ocorrencias').select(
+            "numero, data_hora, status, tipo, tutor_id, sala_id, "
+            "solicitado_tutor, solicitado_coordenacao, solicitado_gestao, "
+            "atendimento_tutor, atendimento_coordenacao, atendimento_gestao, "
+            "dt_atendimento_gestao" # Usamos o dt_atendimento_gestao como data de fechamento final
+        ).execute()
+        ocorrencias = handle_supabase_response(resp_occ)
+        
+        # 2. Obter mapeamentos de Sala e Tutor
+        resp_salas = supabase.table('d_salas').select('id, sala').execute()
+        salas_map = {str(s['id']): s['sala'] for s in handle_supabase_response(resp_salas)}
+        
+        resp_tutores = supabase.table('d_funcionarios').select('id, nome').eq('is_tutor', True).execute()
+        tutores_map = {str(t['id']): t['nome'] for t in handle_supabase_response(resp_tutores)}
+
+        # 3. Agregação de dados
+        total = len(ocorrencias)
+        abertas = 0
+        finalizadas = 0
+        
+        tipos_count = {}
+        salas_stats = {} # Por Sala: {total, menos_7d, mais_7d, nao_respondidas}
+        tutores_stats = {} # Por Tutor: {total, finalizadas, abertas, tempos_resposta: []}
+        tempo_resposta_faixas = {
+            '1-7 dias': 0, '8-30 dias': 0, 'mais de 30 dias': 0, 'não finalizadas': 0
+        }
+        ocorrencias_por_mes = {} # {mes_ano: count}
+        
+        hoje = datetime.now()
+        
+        for occ in ocorrencias:
+            occ_status = occ.get('status')
+            occ_data_hora = occ.get('data_hora')
+            occ_tipo = occ.get('tipo', 'Outros')
+            sala_id_str = str(occ.get('sala_id'))
+            tutor_id_str = str(occ.get('tutor_id')) if occ.get('tutor_id') else None
+            
+            # 3.1. Totais e Tipos
+            if occ_status == 'Aberta':
+                abertas += 1
+            elif occ_status == 'Finalizada':
+                finalizadas += 1
+            
+            tipos_count[occ_tipo] = tipos_count.get(occ_tipo, 0) + 1
+            
+            # 3.2. Por Mês
+            if occ_data_hora:
+                dt = datetime.fromisoformat(occ_data_hora.replace('Z', '+00:00'))
+                mes_ano_key = dt.strftime("%Y-%m")
+                ocorrencias_por_mes[mes_ano_key] = ocorrencias_por_mes.get(mes_ano_key, 0) + 1
+            
+            # 3.3. Estatísticas por Sala
+            if sala_id_str in salas_map:
+                sala_name = salas_map[sala_id_str]
+                if sala_id_str not in salas_stats:
+                    salas_stats[sala_id_str] = {'sala': sala_name, 'total': 0, 'menos_7d': 0, 'mais_7d': 0, 'nao_respondidas': 0}
+                salas_stats[sala_id_str]['total'] += 1
+                
+                if occ_status == 'Aberta' and occ_data_hora:
+                    dt_abertura = datetime.fromisoformat(occ_data_hora.replace('Z', '+00:00'))
+                    dias_aberta = (hoje - dt_abertura).days
+                    
+                    if dias_aberta <= 7:
+                        salas_stats[sala_id_str]['menos_7d'] += 1
+                    else:
+                        salas_stats[sala_id_str]['mais_7d'] += 1
+                        
+                    # Verifica se é "Não Respondida"
+                    solicitado = (_to_bool(occ.get('solicitado_tutor')) or 
+                                  _to_bool(occ.get('solicitado_coordenacao')) or 
+                                  _to_bool(occ.get('solicitado_gestao')))
+                    
+                    atendimento_tutor = occ.get('atendimento_tutor')
+                    atendimento_coord = occ.get('atendimento_coordenacao')
+                    atendimento_gestao = occ.get('atendimento_gestao')
+                    
+                    respondido = (
+                        (atendimento_tutor and atendimento_tutor != DEFAULT_AUTOTEXT) or
+                        (atendimento_coord and atendimento_coord != DEFAULT_AUTOTEXT) or
+                        (atendimento_gestao and atendimento_gestao != DEFAULT_AUTOTEXT)
+                    )
+                    
+                    if solicitado and not respondido:
+                        salas_stats[sala_id_str]['nao_respondidas'] += 1
+
+            # 3.4. Estatísticas por Tutor
+            if tutor_id_str and tutor_id_str in tutores_map:
+                tutor_name = tutores_map[tutor_id_str]
+                if tutor_id_str not in tutores_stats:
+                    tutores_stats[tutor_id_str] = {'tutor': tutor_name, 'total': 0, 'finalizadas': 0, 'abertas': 0, 'tempos_resposta': []}
+                
+                tutores_stats[tutor_id_str]['total'] += 1
+                if occ_status == 'Finalizada':
+                    tutores_stats[tutor_id_str]['finalizadas'] += 1
+                    
+                    # Calcula o tempo de resposta
+                    dias_resp = calcular_dias_resposta(occ_data_hora, occ.get('dt_atendimento_gestao'))
+                    if dias_resp is not None:
+                        tutores_stats[tutor_id_str]['tempos_resposta'].append(dias_resp)
+                        
+                        if dias_resp <= 7:
+                            tempo_resposta_faixas['1-7 dias'] += 1
+                        elif dias_resp <= 30:
+                            tempo_resposta_faixas['8-30 dias'] += 1
+                        else:
+                            tempo_resposta_faixas['mais de 30 dias'] += 1
+                else:
+                    tutores_stats[tutor_id_str]['abertas'] += 1
+                    tempo_resposta_faixas['não finalizadas'] += 1
+
+        # 4. Finalização dos cálculos e formatação
+        
+        # Média de dias de resposta por tutor
+        final_tutores = []
+        for t_id, t_data in tutores_stats.items():
+            t_data['media_dias_resposta'] = sum(t_data['tempos_resposta']) / len(t_data['tempos_resposta']) if t_data['tempos_resposta'] else 0
+            # Formatação para o JS
+            final_tutores.append({
+                'tutor': t_data['tutor'],
+                'total': t_data['total'],
+                'finalizadas': t_data['finalizadas'],
+                'abertas': t_data['abertas'],
+                'media_dias_resposta': round(t_data['media_dias_resposta'], 1) if t_data['media_dias_resposta'] else 0
+            })
+            
+        # Formatação do Tempo de Resposta para Gráfico
+        tempo_resp_grafico = {
+            'labels': list(tempo_resposta_faixas.keys()),
+            'valores': list(tempo_resposta_faixas.values())
+        }
+        
+        # Formatação Ocorrências por Mês para Gráfico
+        meses_ordenados = sorted(ocorrencias_por_mes.keys())
+        ocorrencias_por_mes_grafico = {
+            'labels': [datetime.strptime(m, "%Y-%m").strftime("%b/%y") for m in meses_ordenados],
+            'valores': [ocorrencias_por_mes[m] for m in meses_ordenados]
+        }
+
+        # 5. Retorno do JSON final
+        return jsonify({
+            'total': total,
+            'abertas': abertas,
+            'finalizadas': finalizadas,
+            'tipos': tipos_count,
+            'por_sala': list(salas_stats.values()),
+            'por_tutor': final_tutores,
+            'tempo_resposta': tempo_resp_grafico,
+            'ocorrencias_por_mes': ocorrencias_por_mes_grafico
+        }), 200
+
+    except Exception as e:
+        logging.exception("Erro ao gerar relatório estatístico")
+        # Retorna um JSON de erro válido
+        return jsonify({"error": f"Erro interno ao gerar relatório: {e}"}), 500
+
+
 @app.route('/api/vincular_disciplina_sala', methods=['POST'])
 def api_vincular_disciplina_sala():
     data = request.json
@@ -1663,5 +1824,6 @@ def api_relatorio_frequencia_detalhada():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
 
 
