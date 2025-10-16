@@ -298,16 +298,19 @@ def api_get_tutores():
 @app.route('/api/relatorio_frequencia')
 def api_relatorio_frequencia():
     # Simulação de dados para a rota de relatório
-    sala_id = request.args.get('salaId')
-    aluno_id = request.args.get('alunoId')
-    data_inicial = request.args.get('dataInicial')
-    data_final = request.args.get('dataFinal')
-    return jsonify({
-        'presencas_percentual': 92,
-        'faltas_totais': 5,
-        'atrasos_totais': 2,
-        'saidas_antecipadas_totais': 1
-    })
+    try:
+        sala_id = request.args.get('salaId')
+        aluno_id = request.args.get('alunoId')
+        data_inicial = request.args.get('dataInicial')
+        data_final = request.args.get('dataFinal')
+        return jsonify({
+            'presencas_percentual': 92,
+            'faltas_totais': 5,
+            'atrasos_totais': 2,
+            'saidas_antecipadas_totais': 1
+        })
+    except Exception as e:
+        return jsonify({"error": f"Erro ao gerar relatório de frequência: {e}", "status": 500}), 500
 
 @app.route('/api/frequencia/datas_registradas_por_sala/<int:sala_id>')
 def api_datas_registradas(sala_id):
@@ -590,7 +593,7 @@ def get_alunos_com_ocorrencias_por_sala(sala_id):
         # O frontend espera: [{"id": 1, "nome": "Nome Aluno"}, ...]
         alunos_formatados = [{"id": a['id'], "nome": a['nome']} for a in handle_supabase_response(alunos)]
         
-        return jsonify(alunos_formatadas)
+        return jsonify(alunos_formatados)
     except Exception as e:
         logging.exception(f"Erro ao buscar alunos com ocorrências na sala {sala_id}")
         return jsonify({"error": str(e)}), 500
@@ -614,7 +617,8 @@ def get_relatorio_ocorrencias():
         resp = query.execute()
         return jsonify(handle_supabase_response(resp))
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logging.exception("Erro ao gerar relatório de ocorrências") # Log mais detalhado
+        return jsonify({"error": f"Erro ao gerar relatório de ocorrências: {e}"}), 500
 
 @app.route('/api/ocorrencias', methods=['GET'])
 @app.route('/api/ocorrencias/<ocorrencia_id>', methods=['GET'])
@@ -752,10 +756,14 @@ def api_get_guia_aprendizagem():
 def registrar_atendimento(ocorrencia_id):
     try:
         data = request.get_json()
+        if data is None:
+            # Caso o frontend não envie JSON válido ou envie corpo vazio
+            return jsonify({"error": "Corpo da requisição vazio ou JSON inválido. Verifique o Content-Type."}), 400
+
         nivel = data.get("nivel")
-        texto = data.get("texto") # Alterado de 'texto_atendimento' para 'texto' conforme o front-end
+        texto = data.get("texto")
         if not nivel or not texto:
-            return jsonify({"error": "Dados incompletos"}), 400
+            return jsonify({"error": "Dados incompletos: Nível de atendimento ou texto não fornecidos."}), 400
         
         # Mapeamento dos campos de atendimento e data
         campos = {
@@ -765,7 +773,7 @@ def registrar_atendimento(ocorrencia_id):
         }
         
         if nivel not in campos:
-            return jsonify({"error": "Nível inválido"}), 400
+            return jsonify({"error": "Nível de atendimento inválido."}), 400
         
         campo_texto, campo_data = campos[nivel]
         agora = datetime.now().isoformat()
@@ -776,7 +784,7 @@ def registrar_atendimento(ocorrencia_id):
             campo_data: agora
         }).eq("numero", ocorrencia_id).execute()
         
-        # 2. Re-avalia o status da ocorrência (melhor feito aqui para refletir o novo estado)
+        # 2. Re-avalia o status da ocorrência
         resp = supabase.table('ocorrencias').select(
             "solicitado_tutor, solicitado_coordenacao, solicitado_gestao, atendimento_tutor, atendimento_coordenacao, atendimento_gestao"
         ).eq("numero", ocorrencia_id).single().execute()
@@ -795,7 +803,7 @@ def registrar_atendimento(ocorrencia_id):
         at_coord = (occ.get('atendimento_coordenacao') or "").strip()
         at_gest = (occ.get('atendimento_gestao') or "").strip()
         
-        # Ignora pendência se não foi solicitado e já tem autotexto
+        # Se não foi solicitado, o campo deve ter o DEFAULT_AUTOTEXT (ou ser tratado como não pendente)
         pendente_tutor = st and (at_tutor == "" or at_tutor == DEFAULT_AUTOTEXT)
         pendente_coord = sc and (at_coord == "" or at_coord == DEFAULT_AUTOTEXT)
         pendente_gestao = sg and (at_gest == "" or at_gest == DEFAULT_AUTOTEXT)
@@ -813,7 +821,7 @@ def registrar_atendimento(ocorrencia_id):
 
     except Exception as e:
         logging.exception(f"Erro ao registrar atendimento da ocorrência {ocorrencia_id}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"Erro ao registrar atendimento: {str(e)}"}), 500
 
 @app.route('/api/cadastrar_sala', methods=['POST'])
 def api_cadastrar_sala():
