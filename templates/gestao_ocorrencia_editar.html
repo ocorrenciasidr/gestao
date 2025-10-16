@@ -1,157 +1,292 @@
-<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>Ocorrência</title><script src="https://cdn.tailwindcss.com"></script><script>tailwind.config = { theme: { extend: { colors: { 'dark-primary':'#0F172A','dark-secondary':'#1E293B','accent':'#10B981','text-light':'#FFFFFF' }}}};let numeroGlobal = null;let camposAtendimento = ['atendimento_tutor', 'atendimento_coordenacao', 'atendimento_gestao'];document.addEventListener('DOMContentLoaded', () => {const params = new URLSearchParams(window.location.search);numeroGlobal = params.get('id') || params.get('numero');const modo = params.get('modo') || 'visualizar';if (!numeroGlobal) {
-  mostrarMsg('Número da ocorrência não fornecido.', 'error');
-  return;
-}
-carregarDetalhes(numeroGlobal, modo);
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Editar Ocorrência</title>
+<script src="https://cdn.tailwindcss.com"></script>
 
-// Mostra o botão de voltar apenas no modo visualizar
-if (modo === 'visualizar') {
-  document.getElementById('btn-voltar-container').style.display = 'block';
-}
-
-document.getElementById('form-atendimento').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  await salvarAtendimento();
-});
-});function mostrarMsg(msg, tipo='info') {const el = document.getElementById('mensagem-status');el.textContent = msg;el.className = p-3 rounded mt-4 text-white ${tipo === 'error' ? 'bg-red-500' : 'bg-blue-500'};el.style.display = 'block';setTimeout(() => el.style.display = 'none', 5000);}async function carregarDetalhes(numero) {try {const response = await fetch(/api/ocorrencia_detalhes?numero=${numero});const data = await response.json();  if (data.error) {
-    mostrarMsg(`Erro ao carregar: ${data.error}`, 'error');
-    return;
-  }
-
-  document.getElementById('numero').textContent = data.numero;
-  document.getElementById('aluno_nome').textContent = data.aluno_nome;
-  document.getElementById('sala_nome').textContent = data.sala_nome;
-  document.getElementById('tutor_nome').textContent = data.tutor_nome;
-  document.getElementById('professor_nome').textContent = data.professor_nome;
-  document.getElementById('status').textContent = data.status;
-  document.getElementById('descricao').textContent = data.descricao;
-  document.getElementById('atendimento_professor').value = data.atendimento_professor || 'Não Registrado';
-  document.getElementById('atendimento_professor').readOnly = true;
-
-  // Preencher e habilitar/desabilitar campos de atendimento
-  camposAtendimento.forEach(campo => {
-    const el = document.getElementById(campo);
-    const nivel = campo.split('_')[1]; // tutor, coordenacao, gestao
-    el.value = data[campo] || '';
-
-    // Habilita a edição apenas se o campo estiver vazio
-    if (!data[campo] || data[campo].trim() === 'ATENDIMENTO NÃO SOLICITADO PELO RESPONSÁVEL DA OCORRÊNCIA') {
-      el.readOnly = false;
-      el.placeholder = `Registre o atendimento de ${nivel}...`;
-      // Mostrar o botão de salvar se houver algum campo de atendimento habilitado
-      document.getElementById('btn-salvar').classList.remove('hidden');
-    } else {
-      el.readOnly = true;
-      el.placeholder = 'Atendimento já registrado';
+<script>
+tailwind.config = {
+    theme: {
+        extend: {
+            colors: {
+                'dark-primary': '#0F172A',
+                'dark-secondary': '#1E293B',
+                'accent': '#10B981',
+                'text-light': '#F8FAFC',
+                'input-bg': '#374151',
+                'danger': '#DC2626',
+            },
+            fontFamily: {
+                sans: ['Inter', 'sans-serif'],
+            },
+        }
     }
-  });
-  
-  // Se todos os atendimentos solicitados estiverem preenchidos, o botão deve sumir
-  const isFinalizada = data.status === 'Finalizada';
-  if (isFinalizada) {
-      document.getElementById('btn-salvar').classList.add('hidden');
-  }
-
-} catch (error) {
-  console.error('Falha na requisição de detalhes:', error);
-  mostrarMsg('Erro ao carregar detalhes da ocorrência. Verifique a console.', 'error');
-}
-}async function salvarAtendimento() {let nivel_salvar = null;let texto_salvar = '';// 1. Determina qual campo foi preenchido e não está 'readOnly'
-for (const campo of camposAtendimento) {
-    const el = document.getElementById(campo);
-    if (!el.readOnly && el.value.trim() !== '') {
-        nivel_salvar = campo.split('_')[1]; // Ex: 'tutor'
-        texto_salvar = el.value.trim();
-        break; // Salva o primeiro que encontrar
-    }
-}
-
-if (!nivel_salvar) {
-    mostrarMsg('Preencha pelo menos um campo de atendimento habilitado para salvar.', 'error');
-    return;
-}
-
-const payload = {
-    nivel: nivel_salvar,
-    texto: texto_salvar
 };
 
-try {
-    mostrarMsg(`Salvando atendimento de ${nivel_salvar}...`, 'info');
-    
-    const response = await fetch(`/api/registrar_atendimento/${numeroGlobal}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // ENVIO DO JSON CORRETO
-        body: JSON.stringify(payload)
-    });
+let numeroGlobal = null;
 
-    // Verifica se a resposta foi HTTP 200 OK
-    if (!response.ok) {
-        // Se a resposta for um erro HTTP (ex: 500), tenta ler o JSON de erro
-        const errorData = await response.json().catch(() => ({error: 'Resposta inválida ou erro do servidor (não JSON).'}));
-        mostrarMsg(`Erro ao salvar: ${errorData.error || 'Erro desconhecido.'} (Status: ${response.status})`, 'error');
-        console.error('Detalhes do erro:', errorData);
+document.addEventListener('DOMContentLoaded', () => {
+    const params = new URLSearchParams(window.location.search);
+    numeroGlobal = params.get('id') || params.get('numero');
+    const modo = params.get('modo') || 'visualizar'; // modo pode ser 'atendimento' ou 'visualizar'
+
+    if (!numeroGlobal) {
+        alert('Número da ocorrência não fornecido.');
         return;
     }
 
-    const result = await response.json();
+    carregarDetalhes(numeroGlobal, modo);
 
-    if (result.error) {
-         mostrarMsg(`Erro ao salvar: ${result.error}`, 'error');
-         return;
-    }
-    
-    mostrarMsg(`Atendimento de ${nivel_salvar} salvo com sucesso!`, 'success');
-    
-    // Recarrega os detalhes para atualizar o estado e desabilitar o campo
-    carregarDetalhes(numeroGlobal, 'editar'); 
+    // evento de salvar
+    document.getElementById('form-atendimento').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await salvarAtendimento();
+    });
+});
 
-} catch (error) {
-    console.error('Falha na requisição salvarAtendimento:', error);
-    // Este catch pegará o erro 'Unexpected token <' se o servidor retornar HTML
-    mostrarMsg(`Erro ao salvar: Resposta inválida (HTML inesperado). Verifique o console.`, 'error');
+function mostrarMensagem(texto, tipo = 'info') {
+    const msgEl = document.getElementById('mensagem-status');
+    msgEl.textContent = texto;
+    msgEl.classList.remove('hidden', 'bg-accent', 'bg-danger', 'bg-dark-secondary');
+
+    if (tipo === 'success') msgEl.classList.add('bg-accent');
+    else if (tipo === 'danger' || tipo === 'error') msgEl.classList.add('bg-danger');
+    else msgEl.classList.add('bg-dark-secondary');
+
+    setTimeout(() => msgEl.classList.add('hidden'), 4000);
 }
-}</script><style>body { background-color: #0F172A; color: #F8FAFC; font-family: sans-serif; }.header-info span { display: block; font-size: 0.8rem; color: #94A3B8; }.header-info strong { font-size: 1rem; color: #FFFFFF; }textarea:read-only { background-color: #334155; opacity: 0.8; cursor: not-allowed; }</style></head><body class="p-4 md:p-8"><div class="max-w-4xl mx-auto"><header class="mb-6"><h1 class="text-3xl font-bold text-accent">Detalhes da Ocorrência</h1><div id="mensagem-status" style="display: none;" class="mt-3"></div><div class="mt-4 flex gap-2"><div id="btn-voltar-container" style="display: block;"><button onclick="window.history.back()" class="px-4 py-2 bg-gray-600 rounded text-white">← Voltar</button></div><div class="ml-auto"><span id="status" class="px-3 py-1 rounded text-sm font-semibold"></span></div></div></header><main class="bg-dark-secondary p-6 rounded-lg shadow-lg">
-  <div class="grid grid-cols-2 gap-4 mb-6 header-info">
-    <div><span>Número:</span><strong id="numero">N/A</strong></div>
-    <div><span>Aluno:</span><strong id="aluno_nome">N/A</strong></div>
-    <div><span>Sala:</span><strong id="sala_nome">N/A</strong></div>
-    <div><span>Tutor:</span><strong id="tutor_nome">N/A</strong></div>
-    <div><span>Professor:</span><strong id="professor_nome">N/A</strong></div>
-  </div>
 
-  <div class="mb-4">
-    <label class="block text-sm font-medium mb-1">Descrição da Ocorrência</label>
-    <textarea id="descricao" rows="4" class="w-full bg-gray-700 text-white rounded p-2" readonly></textarea>
-  </div>
+async function carregarDetalhes(numero, modo) {
+    try {
+        mostrarMensagem('Carregando detalhes...', 'info');
+        const resp = await fetch(`/api/ocorrencia_detalhes?numero=${encodeURIComponent(numero)}`);
+        if (!resp.ok) throw new Error('Falha ao carregar detalhes.');
+        const occ = await resp.json();
 
-  <h2 class="text-xl font-semibold mb-4 text-accent">Atendimentos</h2>
+        document.getElementById('numero').textContent = occ.numero || '';
+        document.getElementById('aluno').textContent = occ.aluno_nome || '—';
+        document.getElementById('sala').textContent = occ.sala_nome || '—';
+        document.getElementById('tutor').textContent = occ.tutor_nome || '—';
+        document.getElementById('professor').textContent = occ.professor_nome || '—';
+        document.getElementById('status').textContent = occ.status || '—';
 
-  <form id="form-atendimento">
-    <div class="mb-3">
-      <label class="block text-sm font-medium mb-1">Atendimento Professor (Registro Inicial)</label>
-      <textarea id="atendimento_professor" rows="2" class="w-full bg-gray-700 text-white rounded p-2" readonly></textarea>
-    </div>
-    
-    <div class="mb-3">
-      <label class="block text-sm font-medium mb-1">Atendimento Tutor</label>
-      <textarea id="atendimento_tutor" rows="2" class="w-full bg-dark-primary text-white rounded p-2"></textarea>
-    </div>
-    
-    <div class="mb-3">
-      <label class="block text-sm font-medium mb-1">Atendimento Coordenação</label>
-      <textarea id="atendimento_coordenacao" rows="2" class="w-full bg-dark-primary text-white rounded p-2"></textarea>
-    </div>
-    
-    <div class="mb-3">
-      <label class="block text-sm font-medium mb-1">Atendimento Gestão</label>
-      <textarea id="atendimento_gestao" rows="2" class="w-full bg-dark-primary text-white rounded p-2"></textarea>
-    </div>
-    
-    <div class="flex gap-2">
-      <button id="btn-salvar" type="submit" class="px-4 py-2 bg-accent rounded text-white hidden font-semibold hover:bg-emerald-600 transition">Salvar Atendimento</button>
-    </div>
-  </form>
-</main>
-</div></body></html>
+        document.getElementById('descricao').value = occ.descricao || '';
+        document.getElementById('atendimento_professor').value = occ.atendimento_professor || '';
+        document.getElementById('atendimento_tutor').value = occ.atendimento_tutor || '';
+        document.getElementById('atendimento_coordenacao').value = occ.atendimento_coordenacao || '';
+        document.getElementById('atendimento_gestao').value = occ.atendimento_gestao || '';
+
+        const campos = [
+            'descricao',
+            'atendimento_professor',
+            'atendimento_tutor',
+            'atendimento_coordenacao',
+            'atendimento_gestao'
+        ];
+
+        if (modo === 'atendimento') {
+            const nivel = (new URLSearchParams(window.location.search)).get('nivel');
+            campos.forEach(id => {
+                const el = document.getElementById(id);
+                el.readOnly = true;
+                el.classList.add('input-readonly');
+            });
+
+            if (nivel) {
+                const mapa = {
+                    professor: 'atendimento_professor',
+                    tutor: 'atendimento_tutor',
+                    coordenacao: 'atendimento_coordenacao',
+                    gestao: 'atendimento_gestao'
+                };
+                const campo = document.getElementById(mapa[nivel]);
+                campo.readOnly = false;
+                campo.classList.remove('input-readonly');
+                campo.focus();
+            }
+
+            document.getElementById('btn-salvar').classList.remove('hidden');
+        } else {
+            campos.forEach(id => {
+                const el = document.getElementById(id);
+                el.readOnly = true;
+                el.classList.add('input-readonly');
+            });
+            document.getElementById('btn-salvar').classList.add('hidden');
+        }
+
+        mostrarMensagem('Detalhes carregados', 'success');
+    } catch (e) {
+        console.error(e);
+        mostrarMensagem('Erro ao carregar: ' + e.message, 'danger');
+    }
+}
+
+async function salvarAtendimento() {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const nivel = params.get('nivel');
+        if (!nivel) return mostrarMensagem('Nível não informado', 'danger');
+
+        const mapa = {
+            professor: 'atendimento_professor',
+            tutor: 'atendimento_tutor',
+            coordenacao: 'atendimento_coordenacao',
+            gestao: 'atendimento_gestao'
+        };
+
+        const texto = document.getElementById(mapa[nivel]).value.trim();
+        if (!texto) return mostrarMensagem('Preencha o atendimento antes de salvar', 'danger');
+
+        mostrarMensagem('Salvando atendimento...', 'info');
+
+        // ✅ Corrigido para enviar conforme rota Flask /api/registrar_atendimento/<numero>
+        const resp = await fetch(`/api/registrar_atendimento/${numeroGlobal}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nivel: nivel, texto: texto })
+        });
+
+        const result = await resp.json();
+        if (!resp.ok) throw new Error(result.error || result.message || 'Erro ao salvar');
+
+        mostrarMensagem('Atendimento salvo com sucesso!', 'success');
+
+        setTimeout(() => {
+            window.location.href = '/gestao_ocorrencia_abertas';
+        }, 1000);
+    } catch (e) {
+        console.error(e);
+        mostrarMensagem('Erro ao salvar: ' + e.message, 'danger');
+    }
+}
+</script>
+
+<style>
+.form-textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    background-color: #374151;
+    color: #F8FAFC;
+    border: 1px solid #1E293B;
+    transition: all 0.2s;
+}
+.form-textarea:focus {
+    outline: none;
+    border-color: #10B981;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.5);
+}
+.input-readonly {
+    background-color: #1F2937;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+.text-yellow-400 { color: #FBBF24; }
+</style>
+</head>
+
+<body class="bg-dark-primary font-sans text-text-light">
+<div id="app-container" class="flex flex-col items-center justify-between p-4 md:p-8 min-h-screen">
+
+    <header class="w-full text-center mb-8 mt-4">
+        <h1 class="text-xl sm:text-2xl text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
+            SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR
+        </h1><br>
+        <h2 class="text-base sm:text-lg text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
+            GESTÃO DE OCORRÊNCIAS - EDITAR OCORRÊNCIA
+        </h2>
+
+        <div id="btn-voltar-container">
+            <button onclick="window.location.href='/gestao_ocorrencia'"
+                    class="mt-4 px-4 py-2 text-sm font-medium rounded-lg text-gray-300 border border-gray-600 hover:bg-gray-700 transition duration-150 flex items-center mx-auto">
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path>
+                </svg>
+                Voltar ao Menu de Ocorrências
+            </button>
+        </div>
+    </header>
+
+    <main class="w-full max-w-4xl flex-grow flex justify-center">
+        <div class="card w-full p-6 md:p-8 bg-dark-secondary rounded-xl shadow-2xl mb-8">
+            <div id="mensagem-status" class="hidden p-3 mb-4 text-sm font-medium text-white rounded-lg" role="alert"></div>
+
+            <div class="mb-4 text-gray-300">
+                <strong>Número:</strong> <span id="numero" class="ml-2 text-accent"></span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div>
+                    <label>Aluno</label>
+                    <div id="aluno" class="p-2 bg-gray-700 rounded-lg text-sm"></div>
+                </div>
+                <div>
+                    <label>Sala</label>
+                    <div id="sala" class="p-2 bg-gray-700 rounded-lg text-sm"></div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div>
+                    <label>Professor Responsável</label>
+                    <div id="professor" class="p-2 bg-gray-700 rounded-lg text-sm"></div>
+                </div>
+                <div>
+                    <label>Tutor</label>
+                    <div id="tutor" class="p-2 bg-gray-700 rounded-lg text-sm"></div>
+                </div>
+            </div>
+
+            <div class="mb-6">
+                <label>Status</label>
+                <div id="status" class="p-2 bg-gray-700 rounded-lg text-sm"></div>
+            </div>
+
+            <div class="mb-6">
+                <label for="descricao">Descrição</label>
+                <textarea id="descricao" rows="3" class="form-textarea"></textarea>
+            </div>
+
+            <form id="form-atendimento">
+                <div class="mb-4">
+                    <label>Atendimento Professor</label>
+                    <textarea id="atendimento_professor" rows="2" class="form-textarea"></textarea>
+                </div>
+                <div class="mb-4">
+                    <label>Atendimento Tutor</label>
+                    <textarea id="atendimento_tutor" rows="2" class="form-textarea"></textarea>
+                </div>
+                <div class="mb-4">
+                    <label>Atendimento Coordenação</label>
+                    <textarea id="atendimento_coordenacao" rows="2" class="form-textarea"></textarea>
+                </div>
+                <div class="mb-6">
+                    <label>Atendimento Gestão</label>
+                    <textarea id="atendimento_gestao" rows="2" class="form-textarea"></textarea>
+                </div>
+
+                <button id="btn-salvar" type="submit"
+                        class="hidden w-full bg-accent hover:bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg transition duration-200 ease-in-out shadow-lg shadow-emerald-500/50 flex items-center justify-center space-x-2 transform hover:scale-[1.01]">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span>SALVAR ATENDIMENTO</span>
+                </button>
+            </form>
+        </div>
+    </main>
+
+    <footer class="w-full text-center mt-10 p-4 text-gray-400 text-sm border-t border-gray-800">
+        <p class="mb-1 text-base font-medium">
+            DESENVOLVEDOR: MARCELO ANDRÉ NOGUEIRA CARDES
+        </p>
+        <p class="text-xs font-light tracking-wide">
+            LICENCIADO COMO TESTE PARA E.E. PEI PROFESSORA IRENE DIAS RIBEIRO
+        </p>
+    </footer>
+</div>
+</body>
+</html>
