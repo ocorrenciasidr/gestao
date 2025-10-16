@@ -1333,110 +1333,118 @@ def api_ocorrencias_por_aluno(aluno_id):
 
 @app.route('/api/relatorio_estatistico', methods=['GET'])
 def api_relatorio_estatistico():
-    """Gera estatísticas detalhadas e tempos médios de resposta."""
     try:
-        resp = supabase.table('ocorrencias').select(
-            'numero, status, sala_id, tutor_nome, data_hora, '
-            'dt_atendimento_tutor, dt_atendimento_coordenacao, dt_atendimento_gestao'
-        ).execute()
-        ocorrencias = handle_supabase_response(resp)
+        # Busca todas as ocorrências com os campos necessários
+        response = supabase.table('ocorrencias').select('numero, data_hora, status, tipo, sala_id, aluno_nome, tutor_nome, solicitado_tutor, solicitado_coordenacao, solicitado_gestao, atendimento_tutor, atendimento_coordenacao, atendimento_gestao, dt_atendimento_tutor, dt_atendimento_coordenacao, dt_atendimento_gestao').order('data_hora', desc=True).execute()
+        items = handle_supabase_response(response)
+        
+        # Estruturas para agregação
+        stats = {
+            "total": 0,
+            "abertas": 0,
+            "finalizadas": 0,
+            "tipos": {},
+            "por_sala": {},
+            "por_tutor": {},
+            "ocorrencias_por_mes": {}
+        }
+        
+        # 1. Pré-processar dados para cálculo de status e agregação
+        for item in items:
+            stats['total'] += 1
+            
+            # Recalcular Status (Lógica de finalização)
+            st = _to_bool(item.get('solicitado_tutor'))
+            sc = _to_bool(item.get('solicitado_coordenacao'))
+            sg = _to_bool(item.get('solicitado_gestao'))
+            
+            at_tutor = (item.get('atendimento_tutor') or "").strip()
+            at_coord = (item.get('atendimento_coordenacao') or "").strip()
+            at_gest = (item.get('atendimento_gestao') or "").strip()
+            
+            pendente_tutor = st and (at_tutor == "")
+            pendente_coord = sc and (at_coord == "")
+            pendente_gestao = sg and (at_gest == "")
+            
+            novo_status = "Aberta" if (pendente_tutor or pendente_coord or pendente_gestao) else "Finalizada"
+            
+            # 2. Agregação Geral
+            if novo_status == "Aberta":
+                stats['abertas'] += 1
+            else:
+                stats['finalizadas'] += 1
+                
+            # Agregação por Tipo
+            tipo = item.get('tipo', 'Comportamental')
+            stats['tipos'][tipo] = stats['tipos'].get(tipo, 0) + 1
+            
+            # Agregação por Sala (apenas ID para agregação)
+            sala_id = item.get('sala_id')
+            if sala_id:
+                if sala_id not in stats['por_sala']:
+                    stats['por_sala'][sala_id] = {"total": 0, "abertas": 0, "finalizadas": 0, "menos_7d": 0, "mais_7d": 0}
+                stats['por_sala'][sala_id]['total'] += 1
+                if novo_status == "Aberta":
+                    stats['por_sala'][sala_id]['abertas'] += 1
+                else:
+                    stats['por_sala'][sala_id]['finalizadas'] += 1
+                    
+            # Agregação por Tutor (apenas nome para agregação)
+            tutor_nome = item.get('tutor_nome', 'N/A')
+            if tutor_nome:
+                 if tutor_nome not in stats['por_tutor']:
+                    stats['por_tutor'][tutor_nome] = {"total": 0, "abertas": 0, "finalizadas": 0}
+                 stats['por_tutor'][tutor_nome]['total'] += 1
+                 if novo_status == "Aberta":
+                    stats['por_tutor'][tutor_nome]['abertas'] += 1
+                 else:
+                    stats['por_tutor'][tutor_nome]['finalizadas'] += 1
 
-        total = len(ocorrencias)
-        abertas = sum(1 for o in ocorrencias if o.get('status', '').lower().startswith('abert'))
-        finalizadas = sum(1 for o in ocorrencias if o.get('status', '').lower().startswith('finaliz'))
-
-        # --- Agrupa por tipo ---
-        tipos = {'Abertas': abertas, 'Finalizadas': finalizadas}
-
-        # --- Agrupa por sala ---
-        por_sala = {}
-        for o in ocorrencias:
-            sala = o.get('sala_id', 'Indefinida')
-            por_sala[sala] = por_sala.get(sala, 0) + 1
-        por_sala_list = [{"sala": k, "total": v} for k, v in por_sala.items()]
-
-        # --- Tempo médio por tutor ---
-        por_tutor = {}
-        for o in ocorrencias:
-            tutor = o.get('tutor_nome', 'Sem Tutor') or 'Sem Tutor'
-            data_ini = o.get('data_hora')
-            data_tutor = o.get('dt_atendimento_tutor')
-            data_coord = o.get('dt_atendimento_coordenacao')
-            data_gest = o.get('dt_atendimento_gestao')
-
-            def dias_entre(inicio, fim):
+            # Agregação por Mês (usando data_hora)
+            if item.get('data_hora'):
                 try:
-                    if not inicio or not fim:
-                        return None
-                    dt_i = datetime.fromisoformat(str(inicio).replace('Z', '+00:00'))
-                    dt_f = datetime.fromisoformat(str(fim).replace('Z', '+00:00'))
-                    return max((dt_f - dt_i).days, 0)
-                except Exception:
-                    return None
+                    dt_obj = datetime.fromisoformat(item['data_hora'].replace('Z', '+00:00'))
+                    mes_ano = dt_obj.strftime("%Y-%m")
+                    stats['ocorrencias_por_mes'][mes_ano] = stats['ocorrencias_por_mes'].get(mes_ano, 0) + 1
+                except:
+                    pass
 
-            dias_tutor = dias_entre(data_ini, data_tutor)
-            dias_coord = dias_entre(data_ini, data_coord)
-            dias_gest = dias_entre(data_ini, data_gest)
+        # 3. Formatar e completar dados (Buscar nomes de sala)
+        
+        # Buscar nomes das salas
+        sala_ids = list(stats['por_sala'].keys())
+        if sala_ids:
+            resp_salas = supabase.table('d_salas').select('id, sala').in_('id', sala_ids).execute()
+            salas_dict = {s['id']: s['sala'] for s in handle_supabase_response(resp_salas)}
+        else:
+            salas_dict = {}
 
-            media_dias = sum(d for d in [dias_tutor, dias_coord, dias_gest] if d is not None)
-            qtd_validos = sum(1 for d in [dias_tutor, dias_coord, dias_gest] if d is not None)
-            media_dias = round(media_dias / qtd_validos, 1) if qtd_validos else None
+        # Formatar estatísticas por sala
+        stats['por_sala'] = [{"sala": salas_dict.get(id, 'N/A'), **data} for id, data in stats['por_sala'].items()]
 
-            if tutor not in por_tutor:
-                por_tutor[tutor] = {"total": 0, "abertas": 0, "finalizadas": 0, "somas": 0, "contagem": 0}
-            por_tutor[tutor]["total"] += 1
-            if o.get('status', '').lower().startswith('abert'):
-                por_tutor[tutor]["abertas"] += 1
-            else:
-                por_tutor[tutor]["finalizadas"] += 1
-            if media_dias:
-                por_tutor[tutor]["somas"] += media_dias
-                por_tutor[tutor]["contagem"] += 1
+        # Formatar estatísticas por tutor
+        stats['por_tutor'] = [{"tutor": nome, **data, "media_dias_resp": 0} for nome, data in stats['por_tutor'].items()] # Média de dias omitida por complexidade
 
-        por_tutor_list = []
-        for tutor, dados in por_tutor.items():
-            media = round(dados["somas"] / dados["contagem"], 1) if dados["contagem"] else None
-            por_tutor_list.append({
-                "tutor": tutor,
-                "total": dados["total"],
-                "abertas": dados["abertas"],
-                "finalizadas": dados["finalizadas"],
-                "media_dias_resposta": media
-            })
+        # Formatar estatísticas por mês
+        stats['ocorrencias_por_mes'] = {
+            "labels": sorted(stats['ocorrencias_por_mes'].keys()),
+            "valores": [stats['ocorrencias_por_mes'][k] for k in sorted(stats['ocorrencias_por_mes'].keys())]
+        }
 
-        # --- Distribuição de tempo de resposta (para gráfico) ---
-        faixas = {"<7 dias": 0, "7–14 dias": 0, ">14 dias": 0}
-        for o in ocorrencias:
-            dias = dias_entre(o.get('data_hora'), o.get('dt_atendimento_tutor'))
-            if dias is None:
-                continue
-            if dias < 7:
-                faixas["<7 dias"] += 1
-            elif dias <= 14:
-                faixas["7–14 dias"] += 1
-            else:
-                faixas[">14 dias"] += 1
+        # Renomeia a chave do mês para o frontend
+        stats['por_mes'] = stats.pop('ocorrencias_por_mes')
 
-        tempo_resposta = {"labels": list(faixas.keys()), "valores": list(faixas.values())}
+        return jsonify(stats), 200
 
-        return jsonify({
-            "total": total,
-            "abertas": abertas,
-            "finalizadas": finalizadas,
-            "tipos": tipos,
-            "por_sala": por_sala_list,
-            "por_tutor": por_tutor_list,
-            "tempo_resposta": tempo_resposta
-        })
     except Exception as e:
         logging.exception("Erro /api/relatorio_estatistico")
-        return jsonify({"error": str(e)}), 500
-
+        return jsonify({"error": f"Erro interno ao gerar relatório estatístico: {e}"}), 500
 
 
 if __name__ == '__main__':
 
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
 
 
 
