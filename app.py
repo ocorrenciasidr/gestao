@@ -1329,12 +1329,10 @@ def api_ocorrencias_por_aluno(aluno_id):
         logging.exception("Erro /api/ocorrencias_por_aluno")
         return jsonify({"error": str(e)}), 500
 
-
-
 @app.route('/api/relatorio_estatistico', methods=['GET'])
 def api_relatorio_estatistico():
     try:
-        # Busca todas as ocorrências com os campos necessários
+        # Busca todas as ocorrências na tabela "ocorrencias"
         response = supabase.table('ocorrencias').select('numero, data_hora, status, tipo, sala_id, aluno_nome, tutor_nome, solicitado_tutor, solicitado_coordenacao, solicitado_gestao, atendimento_tutor, atendimento_coordenacao, atendimento_gestao, dt_atendimento_tutor, dt_atendimento_coordenacao, dt_atendimento_gestao').order('data_hora', desc=True).execute()
         items = handle_supabase_response(response)
         
@@ -1353,7 +1351,7 @@ def api_relatorio_estatistico():
         for item in items:
             stats['total'] += 1
             
-            # Recalcular Status (Lógica de finalização)
+            # Recalcular Status (Lógica de finalização, garantindo consistência)
             st = _to_bool(item.get('solicitado_tutor'))
             sc = _to_bool(item.get('solicitado_coordenacao'))
             sg = _to_bool(item.get('solicitado_gestao'))
@@ -1378,7 +1376,7 @@ def api_relatorio_estatistico():
             tipo = item.get('tipo', 'Comportamental')
             stats['tipos'][tipo] = stats['tipos'].get(tipo, 0) + 1
             
-            # Agregação por Sala (apenas ID para agregação)
+            # Agregação por Sala
             sala_id = item.get('sala_id')
             if sala_id:
                 if sala_id not in stats['por_sala']:
@@ -1389,7 +1387,7 @@ def api_relatorio_estatistico():
                 else:
                     stats['por_sala'][sala_id]['finalizadas'] += 1
                     
-            # Agregação por Tutor (apenas nome para agregação)
+            # Agregação por Tutor
             tutor_nome = item.get('tutor_nome', 'N/A')
             if tutor_nome:
                  if tutor_nome not in stats['por_tutor']:
@@ -1400,7 +1398,7 @@ def api_relatorio_estatistico():
                  else:
                     stats['por_tutor'][tutor_nome]['finalizadas'] += 1
 
-            # Agregação por Mês (usando data_hora)
+            # Agregação por Mês
             if item.get('data_hora'):
                 try:
                     dt_obj = datetime.fromisoformat(item['data_hora'].replace('Z', '+00:00'))
@@ -1423,7 +1421,7 @@ def api_relatorio_estatistico():
         stats['por_sala'] = [{"sala": salas_dict.get(id, 'N/A'), **data} for id, data in stats['por_sala'].items()]
 
         # Formatar estatísticas por tutor
-        stats['por_tutor'] = [{"tutor": nome, **data, "media_dias_resp": 0} for nome, data in stats['por_tutor'].items()] # Média de dias omitida por complexidade
+        stats['por_tutor'] = [{"tutor": nome, **data, "media_dias_resp": 0} for nome, data in stats['por_tutor'].items()]
 
         # Formatar estatísticas por mês
         stats['ocorrencias_por_mes'] = {
@@ -1431,7 +1429,6 @@ def api_relatorio_estatistico():
             "valores": [stats['ocorrencias_por_mes'][k] for k in sorted(stats['ocorrencias_por_mes'].keys())]
         }
 
-        # Renomeia a chave do mês para o frontend
         stats['por_mes'] = stats.pop('ocorrencias_por_mes')
 
         return jsonify(stats), 200
@@ -1439,14 +1436,7 @@ def api_relatorio_estatistico():
     except Exception as e:
         logging.exception("Erro /api/relatorio_estatistico")
         return jsonify({"error": f"Erro interno ao gerar relatório estatístico: {e}"}), 500
-
-
+        
 if __name__ == '__main__':
 
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-
-
-
-
-
-
