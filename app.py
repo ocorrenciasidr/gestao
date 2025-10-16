@@ -403,27 +403,33 @@ def api_ocorrencias_abertas():
             novo_status = "Aberta" if (pendente_tutor or pendente_coord or pendente_gestao) else "Finalizada"
             if item.get('status') != novo_status:
                 update_fields['status'] = novo_status
+            # CÓDIGO CORRIGIDO TEMPORARIAMENTE PARA TESTE
+
+            # ...
             if update_fields:
                 try:
                     supabase.table('ocorrencias').update(update_fields).eq('numero', numero).execute()
                 except Exception:
                     pass
-            if novo_status == "Aberta":
-                abertas.append({
-                    "numero": numero,
-                    "data_hora": formatar_data_hora(item.get('data_hora')),
-                    "aluno_nome": item.get('aluno_nome', 'N/A'),
-                    "tutor_nome": item.get('tutor_nome', 'N/A'),
-                    "professor_nome": (item.get('professor_id') or {}).get('nome', 'N/A'),
-                    "sala_nome": (item.get('sala_id') or {}).get('sala', 'N/A'),
-                    "status": novo_status,
-                    "solicitado_tutor": st,
-                    "solicitado_coordenacao": sc,
-                    "solicitado_gestao": sg,
-                    "atendimento_tutor": at_tutor,
-                    "atendimento_coordenacao": at_coord,
-                    "atendimento_gestao": at_gest
-                })
+            
+            # REMOVIDO: if novo_status == "Aberta": 
+            # AGORA VAI ADICIONAR TODOS OS REGISTROS PARA TESTE DE TELA:
+            abertas.append({
+                "numero": numero,
+                "data_hora": formatar_data_hora(item.get('data_hora')),
+                "aluno_nome": item.get('aluno_nome', 'N/A'),
+                "tutor_nome": item.get('tutor_nome', 'N/A'),
+                "professor_nome": (item.get('professor_id') or {}).get('nome', 'N/A'),
+                "sala_nome": (item.get('sala_id') or {}).get('sala', 'N/A'),
+                "status": novo_status,
+                "solicitado_tutor": st,
+                "solicitado_coordenacao": sc,
+                "solicitado_gestao": sg,
+                "atendimento_tutor": at_tutor,
+                "atendimento_coordenacao": at_coord,
+                "atendimento_gestao": at_gest
+            })
+            
         return jsonify(abertas), 200
     except Exception as e:
         logging.exception("Erro /api/ocorrencias_abertas")
@@ -1440,3 +1446,4 @@ def api_relatorio_estatistico():
 if __name__ == '__main__':
 
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
