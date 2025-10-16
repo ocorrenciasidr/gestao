@@ -457,7 +457,8 @@ def api_ocorrencias_finalizadas():
             pendente_tutor = st and (at_tutor == "")
             pendente_coord = sc and (at_coord == "")
             pendente_gestao = sg and (at_gest == "")
-             novo_status = "Aberta" if (pendente_tutor or pendente_coord or pendente_gestao) else "Finalizada"
+            # CORREÇÃO DE INDENTAÇÃO: removido o espaço extra da linha original
+            novo_status = "Aberta" if (pendente_tutor or pendente_coord or pendente_gestao) else "Finalizada"
             if item.get('status') != novo_status:
                 update_fields['status'] = novo_status
             if update_fields:
@@ -1147,5 +1148,6 @@ def ocorrencia_detalhes():
 if __name__ == '__main__':
 
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
 
 
