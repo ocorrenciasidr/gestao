@@ -1317,10 +1317,8 @@ def gerar_pdf_ocorrencias():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-/api/ocorrencias_por_aluno/<id>
 @app.route('/api/ocorrencias_por_aluno/<int:aluno_id>', methods=['GET'])
 def api_ocorrencias_por_aluno(aluno_id):
-    """Retorna todas as ocorrências de um aluno específico."""
     try:
         resp = supabase.table('ocorrencias').select(
             'numero, data_hora, descricao, status, aluno_nome, tutor_nome, sala_id'
@@ -1332,7 +1330,6 @@ def api_ocorrencias_por_aluno(aluno_id):
         return jsonify({"error": str(e)}), 500
 
 
-from datetime import datetime
 
 @app.route('/api/relatorio_estatistico', methods=['GET'])
 def api_relatorio_estatistico():
@@ -1440,6 +1437,7 @@ def api_relatorio_estatistico():
 if __name__ == '__main__':
 
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
 
 
 
