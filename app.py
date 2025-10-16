@@ -1071,8 +1071,12 @@ def api_registrar_ocorrencia():
     descricao = data.get('descricao')
     atendimento_professor = data.get('atendimento_professor')
     
+    # --------------------------------------------------------------------------------
+    # VALIDAÇÃO CORRIGIDA: Se houver falha na conversão para int, a validação abaixo
+    # garante que os IDs são obrigatórios.
     if not all([prof_id_bigint, aluno_id_bigint, sala_id_bigint, descricao, atendimento_professor]):
-        return jsonify({"error": "Dados obrigatórios (Professor, Aluno, Sala, Descrição e Atendimento Professor) são necessários.", "status": 400}), 400
+        return jsonify({"error": "Dados obrigatórios (Professor, Aluno, Sala, Descrição e Atendimento Professor) são necessários. Verifique se os IDs de Professor, Aluno e Sala são válidos.", "status": 400}), 400
+    # --------------------------------------------------------------------------------
     
     try:
         # Obtém o nome do tutor a partir do aluno_id
@@ -1099,9 +1103,9 @@ def api_registrar_ocorrencia():
             "tipo": data.get('tipo', 'Comportamental'),
             "status": "Aberta",
             # Valores booleanos são salvos como string 'SIM'/'NÃO' se a coluna for TEXT (conforme o CSV)
-            "solicitado_tutor": 'SIM' if data.get('solicitar_tutor') else 'NÃO',
-            "solicitado_coordenacao": 'SIM' if data.get('solicitar_coordenacao') else 'NÃO',
-            "solicitado_gestao": 'SIM' if data.get('solicitar_gestao') else 'NÃO',
+            "solicitado_tutor": 'SIM' if _to_bool(data.get('solicitar_tutor')) else 'NÃO',
+            "solicitado_coordenacao": 'SIM' if _to_bool(data.get('solicitar_coordenacao')) else 'NÃO',
+            "solicitado_gestao": 'SIM' if _to_bool(data.get('solicitar_gestao')) else 'NÃO',
         }
         
         # A coluna 'solicitado_*' é TEXT, então 'NÃO' e 'SIM' são os valores corretos.
@@ -1115,7 +1119,9 @@ def api_registrar_ocorrencia():
         return jsonify({"message": "Ocorrência registrada com sucesso! Aguardando atendimento.", "status": 201}), 201
     
     except Exception as e:
-        logging.error(f"Erro no Supabase ao registrar ocorrência: {e}")
+        # Registra o erro detalhado no log do servidor
+        logging.exception(f"Erro no Supabase ao registrar ocorrência: {e}")
+        # Retorna o erro detalhado (ou um genérico) para o cliente
         return jsonify({"error": f"Falha ao registrar ocorrência: {e}", "status": 500}), 500
 
 @app.route('/api/agendar_tutoria', methods=['POST'])
