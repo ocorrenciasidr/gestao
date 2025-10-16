@@ -1345,6 +1345,51 @@ def ocorrencia_detalhes():
         logging.exception(f"Erro ao consultar Supabase para detalhes da ocorrência {numero}")
         return jsonify({'error': f'Erro ao consultar Supabase: {str(e)}'}), 500
 
+@app.route("/api/relatorio_estatistico")
+def relatorio_estatistico():
+    try:
+        # Exemplo de consulta (ajuste conforme seu banco)
+        total = supabase.table("ocorrencias").count().execute().count
+        abertas = supabase.table("ocorrencias").select("status", count="exact").eq("status", "Aberta").execute().count
+        finalizadas = supabase.table("ocorrencias").select("status", count="exact").eq("status", "Finalizada").execute().count
+
+        # Exemplo de dados de resumo
+        resumo_geral = [
+            {"tipo": "Indisciplina", "numero": 10, "percentual": 50},
+            {"tipo": "Atraso", "numero": 5, "percentual": 25},
+            {"tipo": "Outros", "numero": 5, "percentual": 25},
+        ]
+
+        # Exemplo de dados por sala
+        por_sala = [
+            {"sala": "8ºA", "total": 5, "percentual": 25, "menos7d": 3, "mais7d": 1, "nao_respondidas": 1},
+            {"sala": "8ºB", "total": 10, "percentual": 50, "menos7d": 7, "mais7d": 2, "nao_respondidas": 1},
+        ]
+
+        # Exemplo de dados por tutor
+        por_tutor = [
+            {"tutor": "Carlos", "total": 8, "finalizadas": 5, "abertas": 3, "media_dias": 4},
+            {"tutor": "Ana", "total": 12, "finalizadas": 9, "abertas": 3, "media_dias": 2},
+        ]
+
+        # Exemplo de dados para gráficos
+        grafico_tempo = {"labels": ["<7d", ">7d", "Não Resp."], "valores": [10, 4, 2]}
+        grafico_tutor = {"labels": ["Carlos", "Ana"], "valores": [8, 12]}
+
+        return jsonify({
+            "total_ocorrencias": total,
+            "abertas": abertas,
+            "finalizadas": finalizadas,
+            "resumo_geral": resumo_geral,
+            "por_sala": por_sala,
+            "por_tutor": por_tutor,
+            "grafico_tempo": grafico_tempo,
+            "grafico_tutor": grafico_tutor
+        })
+
+    except Exception as e:
+        print("Erro ao gerar estatísticas:", e)
+        return jsonify({"error": str(e)}), 500
 
 # =========================================================
 # EXECUÇÃO
@@ -1352,3 +1397,4 @@ def ocorrencia_detalhes():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
