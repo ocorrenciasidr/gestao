@@ -386,6 +386,7 @@ def api_get_agendamentos_pendentes(professor_id):
 @app.route('/api/ocorrencias_abertas', methods=['GET'])
 def api_ocorrencias_abertas():
     try:
+        # Consulta principal, buscando todos os campos necessários
         resp = supabase.table('ocorrencias').select(
             "numero, data_hora, status, aluno_nome, tutor_nome, solicitado_tutor, solicitado_coordenacao, solicitado_gestao, atendimento_tutor, atendimento_coordenacao, atendimento_gestao, professor_id(nome), sala_id(sala)"
         ).order('data_hora', desc=True).execute()
@@ -420,7 +421,7 @@ def api_ocorrencias_abertas():
             pendente_coord = sc and (at_coord == "")
             pendente_gestao = sg and (at_gest == "")
 
-            # Cálculo de status (Correção de indentação na rota original)
+            # Cálculo de status 
             novo_status = "Aberta" if (pendente_tutor or pendente_coord or pendente_gestao) else "Finalizada"
 
             # Atualiza status automaticamente no Supabase se necessário
@@ -433,13 +434,17 @@ def api_ocorrencias_abertas():
                     logging.error(f"Falha ao atualizar ocorrência {numero}: {e}")
 
             if novo_status == "Aberta":
+                # Extração segura dos nomes referenciados
+                professor_nome = (item.get('professor_id') or {}).get('nome', 'N/A')
+                sala_nome = (item.get('sala_id') or {}).get('sala', 'N/A')
+                
                 abertas.append({
                     "numero": numero,
                     "data_hora": formatar_data_hora(item.get('data_hora')),
                     "aluno_nome": item.get('aluno_nome', 'N/A'),
                     "tutor_nome": item.get('tutor_nome', 'N/A'),
-                    "professor_nome": (item.get('professor_id') or {}).get('nome', 'N/A'),
-                    "sala_nome": (item.get('sala_id') or {}).get('sala', 'N/A'),
+                    "professor_nome": professor_nome,
+                    "sala_nome": sala_nome,
                     "status": novo_status,
                     "solicitado_tutor": st,
                     "solicitado_coordenacao": sc,
@@ -466,13 +471,17 @@ def api_ocorrencias_finalizadas():
             "numero, data_hora, status, aluno_nome, tutor_nome, solicitado_tutor, solicitado_coordenacao, solicitado_gestao, atendimento_tutor, atendimento_coordenacao, atendimento_gestao, professor_id(nome), sala_id(sala)"
         ).order('data_hora', desc=True)
         
-        # APLICAÇÃO DOS FILTROS
+        # APLICAÇÃO DOS FILTROS (conversão para int para garantir a tipagem)
         if sala:
-            # Assumindo que sala_id é um número (bigint)
-            q = q.eq('sala_id', int(sala)) 
+            try:
+                q = q.eq('sala_id', int(sala))
+            except ValueError:
+                logging.warning(f"Filtro de sala inválido: {sala}")
         if aluno:
-            # Assumindo que aluno_id é um número (bigint)
-            q = q.eq('aluno_id', int(aluno))
+            try:
+                q = q.eq('aluno_id', int(aluno))
+            except ValueError:
+                logging.warning(f"Filtro de aluno inválido: {aluno}")
 
         resp = q.execute()
         items = resp.data or []
@@ -504,7 +513,7 @@ def api_ocorrencias_finalizadas():
             pendente_coord = sc and (at_coord == "")
             pendente_gestao = sg and (at_gest == "")
 
-            # Cálculo de status (Correção de indentação aplicada)
+            # Cálculo de status
             novo_status = "Aberta" if (pendente_tutor or pendente_coord or pendente_gestao) else "Finalizada"
 
             if item.get('status') != novo_status:
@@ -516,13 +525,17 @@ def api_ocorrencias_finalizadas():
                     logging.error(f"Falha ao atualizar ocorrência {numero}: {e}")
 
             if novo_status == "Finalizada":
+                # Extração segura dos nomes referenciados
+                professor_nome = (item.get('professor_id') or {}).get('nome', 'N/A')
+                sala_nome = (item.get('sala_id') or {}).get('sala', 'N/A')
+
                 finalizadas.append({
                     "numero": numero,
                     "data_hora": formatar_data_hora(item.get('data_hora')),
                     "aluno_nome": item.get('aluno_nome', 'N/A'),
                     "tutor_nome": item.get('tutor_nome', 'N/A'),
-                    "professor_nome": (item.get('professor_id') or {}).get('nome', 'N/A'),
-                    "sala_nome": (item.get('sala_id') or {}).get('sala', 'N/A'),
+                    "professor_nome": professor_nome,
+                    "sala_nome": sala_nome,
                     "status": novo_status,
                     "solicitado_tutor": st,
                     "solicitado_coordenacao": sc,
@@ -549,21 +562,37 @@ def api_ocorrencias_todas():
 @app.route('/api/salas_com_ocorrencias')
 def get_salas_com_ocorrencias():
     try:
+        # Busca todas as salas que aparecem em alguma ocorrência
         ocorrencias = supabase.table('ocorrencias').select('sala_id').execute()
         sala_ids = list({o['sala_id'] for o in ocorrencias.data if o.get('sala_id')})
+        
+        # Busca detalhes das salas
         salas = supabase.table('d_salas').select('id, sala').in_('id', sala_ids).execute()
-        return jsonify(handle_supabase_response(salas))
+        
+        # O frontend espera: [{"id": 1, "sala": "Nome Sala"}, ...]
+        salas_formatadas = [{"id": s['id'], "sala": s['sala']} for s in handle_supabase_response(salas)]
+        
+        return jsonify(salas_formatadas)
     except Exception as e:
+        logging.exception("Erro ao buscar salas com ocorrências")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/alunos_com_ocorrencias_por_sala/<int:sala_id>')
 def get_alunos_com_ocorrencias_por_sala(sala_id):
     try:
+        # Busca todos os alunos que aparecem em ocorrências daquela sala
         ocorrencias = supabase.table('ocorrencias').select('aluno_id').eq('sala_id', sala_id).execute()
         aluno_ids = list({o['aluno_id'] for o in ocorrencias.data if o.get('aluno_id')})
+        
+        # Busca detalhes dos alunos
         alunos = supabase.table('d_alunos').select('id, nome').in_('id', aluno_ids).execute()
-        return jsonify(handle_supabase_response(alunos))
+        
+        # O frontend espera: [{"id": 1, "nome": "Nome Aluno"}, ...]
+        alunos_formatados = [{"id": a['id'], "nome": a['nome']} for a in handle_supabase_response(alunos)]
+        
+        return jsonify(alunos_formatadas)
     except Exception as e:
+        logging.exception(f"Erro ao buscar alunos com ocorrências na sala {sala_id}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/relatorio_ocorrencias')
