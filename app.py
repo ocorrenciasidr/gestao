@@ -1317,9 +1317,68 @@ def gerar_pdf_ocorrencias():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/ocorrencias_por_aluno/<int:aluno_id>', methods=['GET'])
+def api_ocorrencias_por_aluno(aluno_id):
+    """Retorna todas as ocorrências de um aluno específico."""
+    try:
+        resp = supabase.table('ocorrencias').select(
+            'numero, data_hora, descricao, status, aluno_nome, tutor_nome, sala_id(sala)'
+        ).eq('aluno_id', aluno_id).order('data_hora', desc=True).execute()
+        ocorrencias = handle_supabase_response(resp)
+        return jsonify(ocorrencias)
+    except Exception as e:
+        logging.exception("Erro /api/ocorrencias_por_aluno")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/relatorio_estatistico', methods=['GET'])
+def api_relatorio_estatistico():
+    """Gera dados estatísticos de ocorrências para o painel."""
+    try:
+        resp = supabase.table('ocorrencias').select('status, sala_id(sala), tutor_nome, data_hora').execute()
+        ocorrencias = handle_supabase_response(resp)
+
+        total = len(ocorrencias)
+        abertas = len([o for o in ocorrencias if o.get('status') == 'Aberta'])
+        finalizadas = len([o for o in ocorrencias if o.get('status') == 'Finalizada'])
+
+        # Por tipo (status)
+        tipos = {'Abertas': abertas, 'Finalizadas': finalizadas}
+
+        # Por sala
+        por_sala = {}
+        for o in ocorrencias:
+            sala = (o.get('sala_id') or {}).get('sala', 'Indefinida')
+            por_sala[sala] = por_sala.get(sala, 0) + 1
+        por_sala_list = [{"sala": k, "total": v} for k, v in por_sala.items()]
+
+        # Por tutor
+        por_tutor = {}
+        for o in ocorrencias:
+            t = o.get('tutor_nome', 'Sem Tutor')
+            por_tutor[t] = por_tutor.get(t, 0) + 1
+        por_tutor_list = [{"tutor": k, "total": v} for k, v in por_tutor.items()]
+
+        # Tempo de resposta (exemplo estático — pode ajustar depois)
+        tempo_resposta = {"labels": ["<7 dias", "7-14 dias", ">14 dias"], "valores": [10, 5, 3]}
+
+        return jsonify({
+            "total": total,
+            "abertas": abertas,
+            "finalizadas": finalizadas,
+            "tipos": tipos,
+            "por_sala": por_sala_list,
+            "por_tutor": por_tutor_list,
+            "tempo_resposta": tempo_resposta
+        })
+    except Exception as e:
+        logging.exception("Erro /api/relatorio_estatistico")
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == '__main__':
 
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
 
 
