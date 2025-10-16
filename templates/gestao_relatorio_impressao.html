@@ -24,6 +24,7 @@ tailwind.config = {
 let salas = [];
 let alunos = [];
 let ocorrencias = [];
+let nomeAlunoAtual = "";
 
 document.addEventListener('DOMContentLoaded', async () => {
   await carregarSalas();
@@ -43,7 +44,8 @@ async function carregarAlunos() {
   const sala = document.getElementById('filter-sala').value;
   const sel = document.getElementById('filter-aluno');
   sel.innerHTML = '<option>Carregando...</option>';
-  const resp = await fetch(`/api/alunos_por_sala_ocorrencias/${sala}`);
+  // Usa o endpoint correto
+  const resp = await fetch(`/api/alunos_com_ocorrencias_por_sala/${sala}`);
   alunos = await resp.json();
   sel.innerHTML = '<option value="">Selecione o Aluno</option>';
   alunos.forEach(a => sel.innerHTML += `<option value="${a.id}">${a.nome}</option>`);
@@ -57,6 +59,7 @@ async function buscarOcorrencias() {
   }
   const resp = await fetch(`/api/ocorrencias_por_aluno/${aluno}`);
   ocorrencias = await resp.json();
+  nomeAlunoAtual = ocorrencias[0]?.aluno_nome || "";
   renderizarOcorrencias();
 }
 
@@ -92,7 +95,16 @@ async function gerarPDF() {
   });
   const blob = await resp.blob();
   const url = URL.createObjectURL(blob);
-  window.open(url, '_blank');
+
+  // Download com nome do aluno completo
+  const nomeArquivo = (nomeAlunoAtual ? nomeAlunoAtual.replace(/\s/g,'_') : 'relatorio') + '_ocorrencias.pdf';
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nomeArquivo;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 
   // Desabilita as caixas selecionadas
   document.querySelectorAll('#ocorrencias-lista input:checked').forEach(chk => chk.disabled = true);
