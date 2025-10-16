@@ -20,296 +20,341 @@
         }
     </script>
     <style>
-        .form-select {
+        body { background-color: #0F172A; color: #F8FAFC; font-family: sans-serif; }
+        .form-select, .form-input {
             @apply w-full p-3 bg-white border border-gray-700 rounded-lg text-black focus:ring-secondary-accent focus:border-secondary-accent;
             appearance: menulist !important;
             color: black !important;
         }
+        .form-radio { @apply w-4 h-4 text-secondary-accent bg-gray-100 border-gray-300; }
+        .status-P { background-color: #10B981; } /* Verde - Presença */
+        .status-F { background-color: #DC2626; } /* Vermelho - Falta */
+        /* Cores para os botões de status */
+        .status-btn-P { @apply bg-accent-success hover:bg-green-600; }
+        .status-btn-F { @apply bg-alert-danger hover:bg-red-600; }
+        /* Cores para os dias já registrados */
+        .registered-row input[type="radio"] { cursor: not-allowed; }
+        .registered-row label { cursor: not-allowed; opacity: 0.7; }
+        .registered-row button { cursor: not-allowed; opacity: 0.5; }
+
     </style>
     <script>
         let salasData = [];
-        let datasRegistradas = [];
+        let alunosData = [];
+        let frequenciaData = {}; // Para armazenar P/F da chamada inicial
+        let isEditing = false; // Flag para o modo de edição
 
         document.addEventListener('DOMContentLoaded', () => {
             loadSalas();
-            document.getElementById('select-sala').addEventListener('change', handleFiltroChange);
-            document.getElementById('input-data').addEventListener('change', handleFiltroChange);
-            const today = new Date().toISOString().split('T')[0];
-            document.getElementById('input-data').value = today;
+            document.getElementById('select-sala').addEventListener('change', checkFrequencyStatus);
+            document.getElementById('input-data').addEventListener('change', checkFrequencyStatus);
+            document.getElementById('btn-editar-frequencia').addEventListener('click', toggleEditMode);
+            document.getElementById('btn-salvar-frequencia').addEventListener('click', saveFrequency);
         });
 
-        async function handleFetchResponse(url, context) {
-            const response = await fetch(url);
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                // Removida a exibição do alerta de erro na busca de datas para não interromper a UX
-                throw new Error(`Falha no fetch de ${context}: ${errorData.error || response.statusText}`);
-            }
-            return response.json();
-        }
-
         async function loadSalas() {
-            const selectSala = document.getElementById('select-sala');
-            selectSala.innerHTML = '<option value="">Carregando Salas...</option>';
             try {
-                salasData = await handleFetchResponse('/api/salas', 'Salas');
-                selectSala.innerHTML = '<option value="">Selecione a Sala *</option>';
+                const response = await fetch('/api/salas');
+                salasData = await response.json();
+                const selectSala = document.getElementById('select-sala');
+                selectSala.innerHTML = '<option value="">Selecione a Sala</option>';
                 salasData.forEach(sala => {
-                    const option = document.createElement('option');
-                    option.value = sala.id;
-                    option.textContent = sala.nome;
-                    selectSala.appendChild(option);
+                    selectSala.innerHTML += `<option value="${sala.id}">${sala.nome}</option>`;
                 });
             } catch (error) {
-                console.error("Erro ao carregar as salas:", error);
-                selectSala.innerHTML = '<option value="">Erro ao carregar!</option>';
+                console.error('Erro ao carregar salas:', error);
+                mostrarMsg('Erro ao carregar salas.', 'alert-danger');
             }
         }
 
-        async function handleFiltroChange() {
+        async function loadAlunos(sala_id) {
+            try {
+                const response = await fetch(`/api/alunos_por_sala/${sala_id}`);
+                alunosData = await response.json();
+                renderAlunosList();
+            } catch (error) {
+                console.error('Erro ao carregar alunos:', error);
+                mostrarMsg('Erro ao carregar alunos desta sala.', 'alert-danger');
+            }
+        }
+
+        async function checkFrequencyStatus() {
             const salaId = document.getElementById('select-sala').value;
-            const dataSelecionada = document.getElementById('input-data').value;
+            const data = document.getElementById('input-data').value;
             const alunosContainer = document.getElementById('alunos-list-container');
-            const listaBody = document.getElementById('alunos-list-body');
-            const btnSalvar = document.getElementById('btn-salvar-frequencia');
+            const statusDiv = document.getElementById('registro-status');
 
             alunosContainer.classList.add('hidden');
-            listaBody.innerHTML = '';
-            btnSalvar.classList.add('hidden');
-            btnSalvar.textContent = "Salvar Frequência"; // Reseta o texto do botão
+            statusDiv.innerHTML = '';
+            document.getElementById('btn-salvar-frequencia').classList.add('hidden');
+            document.getElementById('btn-editar-frequencia').classList.add('hidden');
+            frequenciaData = {};
+            isEditing = false;
 
-            if (!salaId || !dataSelecionada) return;
+            if (!salaId || !data) return;
 
             try {
-                datasRegistradas = await handleFetchResponse(`/api/frequencia/datas_registradas_por_sala/${salaId}`, 'Datas Registradas');
-            } catch {
-                datasRegistradas = [];
-            }
+                // 1. Verificar se a frequência já foi registrada
+                const statusResponse = await fetch(`/api/frequencia/status?sala_id=${salaId}&data=${data}`);
+                const statusData = await statusResponse.json();
 
-            if (datasRegistradas.includes(dataSelecionada)) {
-                const salaNome = salasData.find(s => s.id == salaId)?.nome || 'Sala';
-                document.getElementById('list-title').textContent = `Frequência de ${salaNome} em ${formatDate(dataSelecionada)}`;
-                
-                // Exibe mensagem e botão de edição
-                listaBody.innerHTML = `
-                    <tr>
-                        <td colspan="2" class="p-4 text-center text-yellow-400 font-bold">
-                            A frequência para esta sala e data já foi registrada.
-                        </td>
-                    </tr>
-                    <tr>
-                        <td colspan="2" class="p-4 text-center">
-                            <button onclick="iniciarEdicao('${salaId}', '${dataSelecionada}')" 
-                                    class="bg-secondary-accent hover:bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg transition duration-150">
-                                Editar Frequência
-                            </button>
-                        </td>
-                    </tr>
-                `;
-                alunosContainer.classList.remove('hidden');
-                return;
-            }
-
-            loadAlunos(salaId, dataSelecionada);
-        }
-
-        // NOVO: Função para carregar dados existentes para edição
-        async function iniciarEdicao(salaId, dataSelecionada) {
-            const alunosContainer = document.getElementById('alunos-list-container');
-            const listaBody = document.getElementById('alunos-list-body');
-            const btnSalvar = document.getElementById('btn-salvar-frequencia');
-            
-            try {
-                // Chama a nova rota do backend para buscar os status P/F existentes
-                const frequenciaExistente = await handleFetchResponse(`/api/frequencia/detalhes/${salaId}/${dataSelecionada}`, 'Frequência Existente');
-                
-                listaBody.innerHTML = '';
-                if (frequenciaExistente.length === 0) {
-                    listaBody.innerHTML = `<tr><td colspan="2" class="p-4 text-center text-gray-400">Nenhum registro de frequência encontrado para esta data.</td></tr>`;
-                    btnSalvar.classList.add('hidden');
-                } else {
-                    frequenciaExistente.forEach(item => {
-                        const status = item.status === 'F' ? 'F' : 'P';
-                        const isFalta = status === 'F';
-                        const statusClass = isFalta ? 'bg-alert-danger' : 'bg-accent-success';
-                        
-                        const tr = document.createElement('tr');
-                        tr.className = 'border-b border-gray-700 hover:bg-dark-secondary/50 transition';
-                        tr.innerHTML = `
-                            <td class="p-3 text-sm font-medium text-text-light">${item.nome}</td>
-                            <td class="p-3">
-                                <button onclick="toggleFrequencia(this)" data-aluno-id="${item.aluno_id}" data-status="${status}"
-                                        class="w-12 h-10 text-xl font-extrabold rounded-md transition duration-150 shadow-md ${statusClass} hover:opacity-80 text-white">${status}</button>
-                            </td>`;
-                        listaBody.appendChild(tr);
-                    });
+                if (statusData.registrada) {
+                    statusDiv.innerHTML = `<span class="text-accent-success font-bold">Frequência já registrada para esta sala e data.</span>`;
+                    document.getElementById('btn-editar-frequencia').classList.remove('hidden');
+                    alunosContainer.classList.remove('hidden');
+                    document.getElementById('btn-salvar-frequencia').classList.add('hidden');
                     
-                    // Reativa o botão de salvar/atualizar
-                    btnSalvar.textContent = "Atualizar Frequência";
-                    btnSalvar.classList.remove('hidden');
-                }
+                    // 2. Carregar dados existentes para exibição/edição
+                    await loadExistingFrequency(salaId, data);
+                    renderAlunosList(true); // Renderiza bloqueado
 
-            } catch (error) {
-                console.error("Erro ao carregar frequência para edição:", error);
-                alert(`ERRO: ${error.message}`);
-                listaBody.innerHTML = `<tr><td colspan="2" class="p-4 text-center text-alert-danger">Erro ao carregar dados para edição.</td></tr>`;
-                btnSalvar.classList.add('hidden');
-            } finally {
-                const salaNome = salasData.find(s => s.id == salaId)?.nome || 'Sala';
-                document.getElementById('list-title').textContent = `Editando Frequência da ${salaNome} em ${formatDate(dataSelecionada)}`;
-                alunosContainer.classList.remove('hidden');
-            }
-        }
-
-
-        async function loadAlunos(salaId, dataSelecionada) {
-            const alunosContainer = document.getElementById('alunos-list-container');
-            const listaBody = document.getElementById('alunos-list-body');
-            const btnSalvar = document.getElementById('btn-salvar-frequencia');
-            btnSalvar.textContent = "Salvar Frequência"; // Reseta o texto do botão
-
-            try {
-                const alunosDaSala = await handleFetchResponse(`/api/alunos_por_sala/${salaId}`, 'Alunos');
-                listaBody.innerHTML = '';
-                if (alunosDaSala.length === 0) {
-                    listaBody.innerHTML = `<tr><td colspan="2" class="p-4 text-center text-gray-400">Nenhum aluno encontrado.</td></tr>`;
-                    btnSalvar.classList.add('hidden');
                 } else {
-                    alunosDaSala.forEach(aluno => {
-                        const tr = document.createElement('tr');
-                        tr.className = 'border-b border-gray-700 hover:bg-dark-secondary/50 transition';
-                        // Status inicial padrão é 'P' (Presente)
-                        tr.innerHTML = `
-                            <td class="p-3 text-sm font-medium text-text-light">${aluno.nome}</td>
-                            <td class="p-3">
-                                <button onclick="toggleFrequencia(this)" data-aluno-id="${aluno.id}" data-status="P"
-                                        class="w-12 h-10 text-xl font-extrabold rounded-md transition duration-150 shadow-md bg-accent-success hover:bg-green-600 text-white">P</button>
-                            </td>`;
-                        listaBody.appendChild(tr);
-                    });
-                    btnSalvar.classList.remove('hidden');
+                    statusDiv.innerHTML = `<span class="text-secondary-accent font-bold">Frequência Pendente.</span>`;
+                    document.getElementById('btn-salvar-frequencia').classList.remove('hidden');
+                    alunosContainer.classList.remove('hidden');
+                    loadAlunos(salaId); // Carrega a lista vazia para registro
                 }
             } catch (error) {
-                listaBody.innerHTML = `<tr><td colspan="2" class="p-4 text-center text-alert-danger">Erro ao carregar alunos.</td></tr>`;
-                btnSalvar.classList.add('hidden');
-            } finally {
-                const salaNome = salasData.find(s => s.id == salaId)?.nome || 'Sala';
-                document.getElementById('list-title').textContent = `Alunos da ${salaNome} em ${formatDate(dataSelecionada)}`;
-                alunosContainer.classList.remove('hidden');
+                console.error('Erro ao verificar status:', error);
+                mostrarMsg('Erro ao verificar status da frequência.', 'alert-danger');
+            }
+        }
+        
+        async function loadExistingFrequency(sala_id, data) {
+            try {
+                const url = `/api/relatorio_frequencia_detalhada?sala_id=${sala_id}&mes_ano=${data.substring(0, 7)}`;
+                const response = await fetch(url);
+                const dataRaw = await response.json();
+                
+                if (dataRaw.error) throw new Error(dataRaw.error);
+
+                // Filtrar a frequência apenas para a data selecionada
+                frequenciaData = {};
+                if (dataRaw.relatorio) {
+                    dataRaw.relatorio.forEach(alunoRow => {
+                        const registroDia = alunoRow.dias.find(d => d.data === data);
+                        if (registroDia && registroDia.status !== '?') {
+                            frequenciaData[alunoRow.id] = registroDia.status;
+                        }
+                    });
+                }
+                loadAlunos(sala_id); // Recarrega alunos para usar o frequenciaData
+            } catch (error) {
+                console.error('Erro ao carregar frequência existente:', error);
+                mostrarMsg('Erro ao carregar dados existentes para edição.', 'alert-danger');
             }
         }
 
-        function toggleFrequencia(button) {
-            if (button.dataset.status === 'P') {
-                button.textContent = 'F';
-                button.dataset.status = 'F';
-                button.classList.remove('bg-accent-success');
-                button.classList.add('bg-alert-danger');
+        function renderAlunosList(lock = false) {
+            const tbody = document.getElementById('alunos-list-body');
+            tbody.innerHTML = '';
+            const isLocked = lock && !isEditing;
+            
+            alunosData.forEach(aluno => {
+                const currentStatus = frequenciaData[aluno.id] || 'F'; // Default para Falta se não existir ou se for o primeiro registro
+                let statusF = currentStatus === 'F';
+                let statusP = currentStatus.includes('P') && currentStatus.length === 1;
+                
+                // Se for PA, PS ou PAS, exibe como Presença (P), mas impede alteração
+                if (currentStatus.includes('A') || currentStatus.includes('S')) {
+                    statusP = true;
+                    statusF = false;
+                }
+
+                let statusPA = currentStatus === 'PA';
+                let statusPS = currentStatus === 'PS';
+                let statusPAS = currentStatus === 'PAS';
+                
+                const rowClasses = isLocked ? 'registered-row' : '';
+                const disabledAttr = isLocked ? 'disabled' : '';
+
+                const row = document.createElement('tr');
+                row.className = `border-b border-gray-700 hover:bg-dark-primary transition ${rowClasses}`;
+                
+                row.innerHTML = `
+                    <td class="p-3 text-left">${aluno.nome}</td>
+                    <td class="p-3 text-center">
+                        <div class="flex items-center justify-center space-x-4">
+                            <!-- Presença (P) -->
+                            <label class="inline-flex items-center text-accent-success">
+                                <input type="radio" name="status-${aluno.id}" value="P" class="form-radio" ${statusP || statusPA || statusPS || statusPAS ? 'checked' : ''} ${disabledAttr}>
+                                <span class="ml-2">P</span>
+                            </label>
+                            
+                            <!-- Falta (F) -->
+                            <label class="inline-flex items-center text-alert-danger">
+                                <input type="radio" name="status-${aluno.id}" value="F" class="form-radio" ${statusF ? 'checked' : ''} ${disabledAttr}>
+                                <span class="ml-2">F</span>
+                            </label>
+                            
+                            <!-- Botão de Detalhes (só aparece se já tiver PA, PS, PAS) -->
+                            ${(statusPA || statusPS || statusPAS) && isLocked ? `<span class="text-sm font-semibold text-secondary-accent ml-4">${currentStatus}</span>` : ''}
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+            document.getElementById('list-title').textContent = isEditing ? 'Lista de Alunos (Modo Edição)' : 'Lista de Alunos';
+            
+            // Re-esconde o botão de salvar no modo visualizar/bloqueado
+            if (isLocked) {
+                document.getElementById('btn-salvar-frequencia').classList.add('hidden');
             } else {
-                button.textContent = 'P';
-                button.dataset.status = 'P';
-                button.classList.remove('bg-alert-danger');
-                button.classList.add('bg-accent-success');
+                document.getElementById('btn-salvar-frequencia').classList.remove('hidden');
             }
         }
+        
+        function toggleEditMode() {
+            isEditing = !isEditing;
+            const btn = document.getElementById('btn-editar-frequencia');
+            
+            if (isEditing) {
+                btn.textContent = 'Cancelar Edição';
+                btn.classList.replace('bg-secondary-accent', 'bg-alert-danger');
+            } else {
+                btn.textContent = 'Editar Frequência';
+                btn.classList.replace('bg-alert-danger', 'bg-secondary-accent');
+            }
+            renderAlunosList(true); // Chama renderização no novo modo
+        }
+
 
         async function saveFrequency() {
             const salaId = document.getElementById('select-sala').value;
             const data = document.getElementById('input-data').value;
+            
             if (!salaId || !data) {
-                alert('Selecione Sala e Data.');
+                mostrarMsg('Selecione Sala e Data.', 'alert-danger');
                 return;
             }
 
-            const listaFrequencia = [];
-            const buttons = document.querySelectorAll('#alunos-list-body button');
-            buttons.forEach(button => {
-                listaFrequencia.push({
-                    aluno_id: button.dataset.alunoId,
-                    status: button.dataset.status,
-                    data,
-                    sala_id: salaId
-                });
+            const registrations = [];
+            
+            alunosData.forEach(aluno => {
+                const radioValue = document.querySelector(`input[name="status-${aluno.id}"]:checked`);
+                if (radioValue) {
+                    const status = radioValue.value;
+                    // Se o status for P ou F E não for um registro de PA/PS/PAS que queremos preservar
+                    if (status === 'P' || status === 'F') {
+                        const existingStatus = frequenciaData[aluno.id];
+                        // Só permite salvar P/F se não for sobrescrever PA/PS/PAS
+                        if (existingStatus === 'PA' || existingStatus === 'PS' || existingStatus === 'PAS') {
+                             // Se estiver editando e mudar PA/PS/PAS para P ou F, forçamos a P ou F
+                             // Mas se não estiver editando, não faz nada (o radio está desabilitado)
+                             if (isEditing) {
+                                registrations.push({
+                                    aluno_id: aluno.id,
+                                    sala_id: salaId,
+                                    data: data,
+                                    status: status // Sobrescreve
+                                });
+                             }
+                        } else {
+                            registrations.push({
+                                aluno_id: aluno.id,
+                                sala_id: salaId,
+                                data: data,
+                                status: status
+                            });
+                        }
+                    }
+                }
             });
 
+            if (registrations.length === 0) {
+                mostrarMsg('Nenhuma alteração de Presença/Falta (P/F) válida detectada.', 'alert-danger');
+                return;
+            }
+            
+            mostrarMsg('Salvando frequência...', 'secondary-accent');
+            
             try {
                 const response = await fetch('/api/salvar_frequencia', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(listaFrequencia),
+                    body: JSON.stringify(registrations)
                 });
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.error || 'Erro no servidor.');
-                
-                const action = document.getElementById('btn-salvar-frequencia').textContent.includes('Atualizar') ? 'atualizada' : 'salva';
-                alert(`Frequência ${action} com sucesso!`);
 
-                if (!datasRegistradas.includes(data)) {
-                    datasRegistradas.push(data);
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'Erro desconhecido ao salvar.');
                 }
-                
-                desabilitarFormularioAposSalvar();
+
+                mostrarMsg(result.message, 'accent-success');
+                // Bloqueia após salvar e recarrega para mostrar o estado atual
+                toggleEditMode();
+                checkFrequencyStatus();
+
             } catch (error) {
-                alert(`ERRO: ${error.message}`);
+                console.error('Erro ao salvar frequência:', error);
+                mostrarMsg(`Erro ao salvar: ${error.message}`, 'alert-danger');
             }
         }
 
-        function desabilitarFormularioAposSalvar() {
-            const listaBody = document.getElementById('alunos-list-body');
-            const btnSalvar = document.getElementById('btn-salvar-frequencia');
-            btnSalvar.classList.add('hidden');
-            listaBody.querySelectorAll('button').forEach(b => {
-                b.disabled = true;
-                b.classList.add('opacity-50');
-            });
-            const msg = document.createElement('tr');
-            msg.innerHTML = `<td colspan="2" class="p-4 text-center text-accent-success font-bold">Frequência salva/atualizada com sucesso!</td>`;
-            listaBody.insertAdjacentElement('afterbegin', msg);
-        }
+        function mostrarMsg(msg, tipo = 'info') {
+            const el = document.getElementById('global-message');
+            el.textContent = msg;
+            el.className = `p-3 rounded mt-4 text-white font-bold`;
+            el.style.display = 'block';
 
-        function formatDate(dateString) {
-            const [y, m, d] = dateString.split('-');
-            return `${d}/${m}/${y}`;
+            if (tipo === 'alert-danger') {
+                el.classList.add('bg-alert-danger');
+            } else if (tipo === 'accent-success') {
+                el.classList.add('bg-accent-success');
+            } else {
+                el.classList.add('bg-secondary-accent');
+            }
+
+            setTimeout(() => el.style.display = 'none', 5000);
         }
     </script>
 </head>
-<body class="bg-dark-primary font-sans text-text-light min-h-screen">
-    <div class="flex flex-col items-center justify-start p-4 md:p-8">
-        <header class="w-full max-w-4xl text-center mb-8 mt-4">
-            <h1 class="text-3xl font-extrabold text-secondary-accent">REGISTRO DE FREQUÊNCIA</h1>
-            <h2 class="text-xl text-text-light mt-2 font-light border-b border-gray-700 pb-2 inline-block">Controle Diário de Presença</h2>
-            <div class="mt-4">
-                <button type="button" onclick="window.location.href='/gestao_frequencia'"
-                        class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center space-x-2 mx-auto max-w-xs">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z"></path></svg>
-                    <span>VOLTAR AO MENU</span>
-                </button>
-            </div>
-        </header>
+<body class="flex flex-col items-center justify-center min-h-screen">
+    <div class="w-full max-w-4xl flex-grow p-4">
+        <h1 class="text-3xl font-extrabold mb-6 text-center text-accent-success">Registro de Frequência</h1>
 
-        <main class="w-full max-w-4xl flex-grow">
-            <div class="bg-dark-secondary p-8 rounded-xl shadow-2xl space-y-6">
-                <h3 class="text-2xl font-bold border-b border-gray-600 pb-3 text-secondary-accent">1. FILTROS</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label for="select-sala" class="block text-sm font-medium text-gray-300 mb-1">Sala:</label>
-                        <select id="select-sala" class="form-select" required></select>
-                    </div>
-                    <div>
-                        <label for="input-data" class="block text-sm font-medium text-gray-300 mb-1">Data:</label>
-                        <input id="input-data" type="date" class="form-select" required>
-                    </div>
+        <div id="global-message" style="display: none;"></div>
+
+        <div class="bg-dark-secondary p-8 rounded-xl shadow-2xl space-y-6">
+            <h3 class="text-2xl font-bold border-b border-gray-600 pb-3 text-secondary-accent">1. FILTROS</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="select-sala" class="block text-sm font-medium text-gray-300 mb-1">Sala:</label>
+                    <select id="select-sala" class="form-select" required></select>
+                </div>
+                <div>
+                    <label for="input-data" class="block text-sm font-medium text-gray-300 mb-1">Data:</label>
+                    <input id="input-data" type="date" class="form-select" required>
                 </div>
             </div>
+            
+            <div id="registro-status" class="pt-2 text-center text-lg"></div>
 
-            <div id="alunos-list-container" class="bg-dark-secondary p-8 rounded-xl shadow-2xl mt-6 hidden">
-                <h3 id="list-title" class="text-2xl font-bold border-b border-gray-600 pb-3 text-secondary-accent">Lista</h3>
-                <table class="w-full mt-4 border-collapse">
-                    <tbody id="alunos-list-body"></tbody>
-                </table>
-                <button id="btn-salvar-frequencia" onclick="saveFrequency()" class="mt-4 bg-accent-success hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg">Salvar Frequência</button>
+            <div class="flex justify-end gap-3 pt-3">
+                <button id="btn-editar-frequencia" type="button" class="px-6 py-2 bg-secondary-accent hover:bg-indigo-600 text-white font-bold rounded-lg hidden">
+                    Editar Frequência
+                </button>
             </div>
-        </main>
+        </div>
+
+        <div id="alunos-list-container" class="bg-dark-secondary p-8 rounded-xl shadow-2xl mt-6 hidden">
+            <h3 id="list-title" class="text-2xl font-bold border-b border-gray-600 pb-3 text-secondary-accent">Lista de Alunos</h3>
+            <table class="w-full mt-4 border-collapse">
+                <thead class="text-left text-sm text-gray-400 border-b border-gray-700">
+                    <tr>
+                        <th class="p-3">Aluno</th>
+                        <th class="p-3 text-center">Status (P/F)</th>
+                    </tr>
+                </thead>
+                <tbody id="alunos-list-body">
+                    <!-- Linhas dos alunos serão inseridas aqui -->
+                </tbody>
+            </table>
+            <button id="btn-salvar-frequencia" class="mt-4 bg-accent-success hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg w-full transition duration-200 hidden">
+                Salvar Frequência
+            </button>
+        </div>
     </div>
 </body>
 </html>
