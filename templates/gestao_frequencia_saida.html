@@ -20,6 +20,7 @@
         }
     </script>
     <style>
+        body { background-color: #0F172A; color: #F8FAFC; font-family: sans-serif; }
         .form-select, .form-input {
             @apply w-full p-3 bg-white border border-gray-700 rounded-lg text-black focus:ring-secondary-accent focus:border-secondary-accent;
             appearance: menulist !important;
@@ -34,203 +35,160 @@
         document.addEventListener('DOMContentLoaded', () => {
             loadSalas();
             document.getElementById('select-sala').addEventListener('change', loadAlunos);
-            document.getElementById('select-aluno').addEventListener('change', showSaidaForm);
         });
 
-        async function handleFetchResponse(url, context) {
-            const response = await fetch(url);
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                alert(`Erro ao buscar ${context}: ${errorData.error || response.statusText}`);
-                throw new Error(`Falha no fetch de ${context}`);
-            }
-            return response.json();
-        }
-
         async function loadSalas() {
-            const selectSala = document.getElementById('select-sala');
-            selectSala.innerHTML = '<option value="">Carregando Salas...</option>';
             try {
-                salasData = await handleFetchResponse('/api/salas', 'Salas');
-                selectSala.innerHTML = '<option value="">Selecione a Sala *</option>';
+                const response = await fetch('/api/salas');
+                salasData = await response.json();
+                const selectSala = document.getElementById('select-sala');
+                selectSala.innerHTML = '<option value="">Selecione a Sala</option>';
                 salasData.forEach(sala => {
                     selectSala.innerHTML += `<option value="${sala.id}">${sala.nome}</option>`;
                 });
             } catch (error) {
-                console.error("Erro ao carregar as salas:", error);
-                selectSala.innerHTML = '<option value="">Erro ao carregar!</option>';
+                console.error('Erro ao carregar salas:', error);
+                mostrarMsg('Erro ao carregar salas.', 'alert-danger');
             }
         }
 
         async function loadAlunos() {
             const salaId = document.getElementById('select-sala').value;
             const selectAluno = document.getElementById('select-aluno');
-            const alunoContainer = document.getElementById('aluno-filter-container');
-            selectAluno.innerHTML = '<option value="">Carregando Alunos...</option>';
-            document.getElementById('saida-form-container').classList.add('hidden');
+            selectAluno.innerHTML = '<option value="">Selecione o Aluno</option>';
 
-            if (!salaId) {
-                selectAluno.innerHTML = '<option value="">Selecione a Sala primeiro</option>';
-                alunoContainer.classList.add('hidden');
-                return;
-            }
+            if (!salaId) return;
 
             try {
-                alunosData = await handleFetchResponse(`/api/alunos_por_sala/${salaId}`, 'Alunos');
-                selectAluno.innerHTML = '<option value="">Selecione o Aluno *</option>';
+                const response = await fetch(`/api/alunos_por_sala/${salaId}`);
+                alunosData = await response.json();
                 alunosData.forEach(aluno => {
                     selectAluno.innerHTML += `<option value="${aluno.id}">${aluno.nome}</option>`;
                 });
-                alunoContainer.classList.remove('hidden');
             } catch (error) {
-                console.error("Erro ao carregar alunos:", error);
-                selectAluno.innerHTML = '<option value="">Erro ao carregar!</option>';
-            }
-        }
-
-        function showSaidaForm() {
-            const alunoId = document.getElementById('select-aluno').value;
-            const formContainer = document.getElementById('saida-form-container');
-
-            if (alunoId) {
-                const now = new Date();
-                const today = now.toISOString().split('T')[0];
-                const time = now.toTimeString().split(' ')[0].substring(0, 5);
-                document.getElementById('input-data').value = today;
-                document.getElementById('input-hora').value = time;
-                formContainer.classList.remove('hidden');
-            } else {
-                formContainer.classList.add('hidden');
+                console.error('Erro ao carregar alunos:', error);
+                mostrarMsg('Erro ao carregar alunos.', 'alert-danger');
             }
         }
 
         async function saveSaida() {
-            const salaId = document.getElementById('select-sala').value;
             const alunoId = document.getElementById('select-aluno').value;
+            const salaId = document.getElementById('select-sala').value;
             const data = document.getElementById('input-data').value;
             const hora = document.getElementById('input-hora').value;
-            const motivo = document.getElementById('input-motivo').value.trim();
-            const responsavel = document.getElementById('input-responsavel').value.trim();
-            const telefone = document.getElementById('input-telefone').value.trim();
+            const motivo = document.getElementById('input-motivo').value;
+            const responsavel = document.getElementById('input-responsavel').value;
+            const telefone = document.getElementById('input-telefone').value;
 
-            if (!alunoId || !data || !hora || !motivo || !responsavel || !telefone) {
-                alert('Por favor, preencha todos os campos.');
+            if (!alunoId || !salaId || !data || !hora || !motivo || !responsavel || !telefone) {
+                mostrarMsg('Todos os campos são obrigatórios.', 'alert-danger');
                 return;
             }
 
-            // NOVO CÓDIGO para gestao_frequencia_saida.html
-            const registro = {
+            const payload = {
                 aluno_id: alunoId,
                 sala_id: salaId,
-                data,
-                // ADICIONADO: Chaves simples para validação do backend
+                data: data,
                 hora: hora,
                 motivo: motivo,
                 responsavel: responsavel,
-                telefone: telefone,
-                
-                // Campos que o DB espera (para Saída)
-                hora_saida: hora,
-                motivo_saida: motivo,
-                responsavel_saida: responsavel,
-                telefone_saida: telefone
+                telefone: telefone
             };
+
+            mostrarMsg('Salvando registro de saída antecipada...', 'secondary-accent');
+
             try {
                 const response = await fetch('/api/salvar_saida_antecipada', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(registro),
+                    body: JSON.stringify(payload)
                 });
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.error || 'Falha no servidor');
 
-                alert('Saída antecipada registrada com sucesso!');
-                document.getElementById('select-aluno').value = '';
-                document.getElementById('input-motivo').value = '';
-                document.getElementById('input-responsavel').value = '';
-                document.getElementById('input-telefone').value = '';
-                document.getElementById('saida-form-container').classList.add('hidden');
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'Erro desconhecido ao salvar.');
+                }
+
+                mostrarMsg(result.message, 'accent-success');
+                // Limpar formulário após sucesso
+                document.getElementById('form-saida').reset();
+                loadAlunos(); // Recarrega alunos para resetar o select
             } catch (error) {
-                console.error("Erro ao salvar saída:", error);
-                alert(`ERRO: ${error.message}`);
+                console.error('Erro ao salvar saída antecipada:', error);
+                mostrarMsg(`Erro ao salvar: ${error.message}`, 'alert-danger');
             }
+        }
+
+        function mostrarMsg(msg, tipo = 'info') {
+            const el = document.getElementById('global-message');
+            el.textContent = msg;
+            el.className = `p-3 rounded mt-4 text-white font-bold`;
+            el.style.display = 'block';
+
+            if (tipo === 'alert-danger') {
+                el.classList.add('bg-alert-danger');
+            } else if (tipo === 'accent-success') {
+                el.classList.add('bg-accent-success');
+            } else {
+                el.classList.add('bg-secondary-accent');
+            }
+
+            setTimeout(() => el.style.display = 'none', 5000);
         }
     </script>
 </head>
+<body class="flex flex-col items-center justify-center min-h-screen">
+    <div class="w-full max-w-2xl flex-grow p-4">
+        <h1 class="text-3xl font-extrabold mb-6 text-center text-secondary-accent">Registro de Saída Antecipada (Status PS/PAS)</h1>
+        
+        <div id="global-message" style="display: none;"></div>
 
-<body class="bg-dark-primary font-sans text-text-light min-h-screen">
-    <div class="flex flex-col items-center justify-start p-4 md:p-8">
+        <form id="form-saida" class="bg-dark-secondary p-8 rounded-xl shadow-2xl space-y-6">
+            <h3 class="text-xl font-bold border-b border-gray-600 pb-3 text-accent-success">Dados da Saída</h3>
 
-        <header class="w-full max-w-4xl text-center mb-8 mt-4">
-            <h1 class="text-3xl sm:text-4xl font-extrabold text-secondary-accent leading-tight tracking-wider">
-                REGISTRO DE SAÍDA ANTECIPADA
-            </h1>
-            <h2 class="text-xl sm:text-2xl text-text-light mt-2 font-light border-b border-gray-700 pb-2 inline-block">
-                Controle de Saídas de Alunos
-            </h2>
-            <div class="mt-4">
-                <button type="button" onclick="window.location.href='/gestao_frequencia'"
-                        class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center space-x-2 mx-auto max-w-xs">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z"/></svg>
-                    <span>VOLTAR AO MENU DE FREQUÊNCIA</span>
-                </button>
-            </div>
-        </header>
-
-        <main class="w-full max-w-4xl flex-grow">
-            <div class="bg-dark-secondary p-8 rounded-xl shadow-2xl space-y-6">
-                <h3 class="text-2xl font-bold border-b border-gray-600 pb-3 text-secondary-accent">1. FILTROS</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label for="select-sala" class="block text-sm font-medium text-gray-300 mb-1">Sala:</label>
-                        <select id="select-sala" class="form-select" required>
-                            <option value="">Selecione a Sala *</option>
-                        </select>
-                    </div>
-                    <div id="aluno-filter-container" class="hidden">
-                        <label for="select-aluno" class="block text-sm font-medium text-gray-300 mb-1">Aluno:</label>
-                        <select id="select-aluno" class="form-select" required>
-                            <option value="">Selecione a Sala primeiro</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-            <div id="saida-form-container" class="bg-dark-secondary p-8 rounded-xl shadow-2xl space-y-6 mt-6 hidden">
-                <h3 class="text-2xl font-bold border-b border-gray-600 pb-3 text-secondary-accent">2. REGISTRO DE SAÍDA</h3>
-
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label for="input-data" class="block text-sm font-medium text-gray-300 mb-1">Data:</label>
-                        <input id="input-data" type="date" class="form-input" required>
-                    </div>
-                    <div>
-                        <label for="input-hora" class="block text-sm font-medium text-gray-300 mb-1">Hora da Saída:</label>
-                        <input id="input-hora" type="time" class="form-input" required>
-                    </div>
-                </div>
-
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                    <label for="input-motivo" class="block text-sm font-medium text-gray-300 mb-1">Motivo:</label>
-                    <textarea id="input-motivo" rows="2" class="form-input" placeholder="Motivo da saída antecipada..." required></textarea>
+                    <label for="select-sala" class="block text-sm font-medium text-gray-300 mb-1">Sala:</label>
+                    <select id="select-sala" class="form-select" required></select>
                 </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label for="input-responsavel" class="block text-sm font-medium text-gray-300 mb-1">Responsável:</label>
-                        <input id="input-responsavel" type="text" class="form-input" placeholder="Nome do responsável" required>
-                    </div>
-                    <div>
-                        <label for="input-telefone" class="block text-sm font-medium text-gray-300 mb-1">Telefone:</label>
-                        <input id="input-telefone" type="tel" class="form-input" placeholder="(11) 99999-9999" required>
-                    </div>
+                <div>
+                    <label for="select-aluno" class="block text-sm font-medium text-gray-300 mb-1">Aluno:</label>
+                    <select id="select-aluno" class="form-select" required></select>
                 </div>
-
-                <button type="button" onclick="saveSaida()" class="w-full bg-accent-success hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg">
-                    Salvar Saída Antecipada
-                </button>
             </div>
-        </main>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="input-data" class="block text-sm font-medium text-gray-300 mb-1">Data:</label>
+                    <input id="input-data" type="date" class="form-input" required>
+                </div>
+                <div>
+                    <label for="input-hora" class="block text-sm font-medium text-gray-300 mb-1">Hora da Saída:</label>
+                    <input id="input-hora" type="time" class="form-input" required>
+                </div>
+            </div>
+
+            <div>
+                <label for="input-motivo" class="block text-sm font-medium text-gray-300 mb-1">Motivo:</label>
+                <textarea id="input-motivo" rows="2" class="form-input" placeholder="Motivo da saída antecipada..." required></textarea>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="input-responsavel" class="block text-sm font-medium text-gray-300 mb-1">Responsável:</label>
+                    <input id="input-responsavel" type="text" class="form-input" placeholder="Nome do responsável" required>
+                </div>
+                <div>
+                    <label for="input-telefone" class="block text-sm font-medium text-gray-300 mb-1">Telefone:</label>
+                    <input id="input-telefone" type="tel" class="form-input" placeholder="(11) 99999-9999" required>
+                </div>
+            </div>
+
+            <button type="button" onclick="saveSaida()" class="w-full bg-accent-success hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg transition duration-200">
+                Salvar Saída Antecipada
+            </button>
+        </form>
     </div>
 </body>
 </html>
