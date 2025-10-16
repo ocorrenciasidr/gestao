@@ -34,21 +34,43 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function carregarSalas() {
   const sel = document.getElementById('filter-sala');
   sel.innerHTML = '<option>Carregando...</option>';
-  const resp = await fetch('/api/salas_com_ocorrencias');
-  salas = await resp.json();
-  sel.innerHTML = '<option value="">Selecione a Sala</option>';
-  salas.forEach(s => sel.innerHTML += `<option value="${s.id}">${s.nome}</option>`);
+  try {
+    const resp = await fetch('/api/salas_com_ocorrencias');
+    salas = await resp.json();
+    sel.innerHTML = '<option value="">Selecione a Sala</option>';
+    salas.forEach(s => {
+      // Corrige o nome exibido, independente da chave retornada
+      const nomeSala = s.nome || s.nome_sala || s.sala_nome || s.descricao || 'Sem nome';
+      const idSala = s.id || s.id_sala || s.numero || '';
+      sel.innerHTML += `<option value="${idSala}">${nomeSala}</option>`;
+    });
+  } catch (e) {
+    console.error('Erro ao carregar salas:', e);
+    sel.innerHTML = '<option value="">Erro ao carregar salas</option>';
+  }
 }
 
 async function carregarAlunos() {
   const sala = document.getElementById('filter-sala').value;
   const sel = document.getElementById('filter-aluno');
   sel.innerHTML = '<option>Carregando...</option>';
-  // Usa o endpoint correto
-  const resp = await fetch(`/api/alunos_com_ocorrencias_por_sala/${sala}`);
-  alunos = await resp.json();
-  sel.innerHTML = '<option value="">Selecione o Aluno</option>';
-  alunos.forEach(a => sel.innerHTML += `<option value="${a.id}">${a.nome}</option>`);
+  if (!sala) {
+    sel.innerHTML = '<option value="">Selecione uma sala primeiro</option>';
+    return;
+  }
+  try {
+    const resp = await fetch(`/api/alunos_com_ocorrencias_por_sala/${sala}`);
+    alunos = await resp.json();
+    sel.innerHTML = '<option value="">Selecione o Aluno</option>';
+    alunos.forEach(a => {
+      const nomeAluno = a.nome || a.aluno_nome || a.nome_aluno || 'Sem nome';
+      const idAluno = a.id || a.id_aluno || a.matricula || '';
+      sel.innerHTML += `<option value="${idAluno}">${nomeAluno}</option>`;
+    });
+  } catch (e) {
+    console.error('Erro ao carregar alunos:', e);
+    sel.innerHTML = '<option value="">Erro ao carregar alunos</option>';
+  }
 }
 
 async function buscarOcorrencias() {
@@ -96,7 +118,6 @@ async function gerarPDF() {
   const blob = await resp.blob();
   const url = URL.createObjectURL(blob);
 
-  // Download com nome do aluno completo
   const nomeArquivo = (nomeAlunoAtual ? nomeAlunoAtual.replace(/\s/g,'_') : 'relatorio') + '_ocorrencias.pdf';
   const a = document.createElement('a');
   a.href = url;
@@ -106,7 +127,6 @@ async function gerarPDF() {
   a.remove();
   URL.revokeObjectURL(url);
 
-  // Desabilita as caixas selecionadas
   document.querySelectorAll('#ocorrencias-lista input:checked').forEach(chk => chk.disabled = true);
 }
 </script>
@@ -160,8 +180,7 @@ async function gerarPDF() {
       </button>
     </section>
   </main>
-    <script src="/static/js/relatorio_filtrado.js"></script>
-  <!-- RODAPÉ PADRONIZADO -->
+
   <footer class="w-full text-center mt-10 p-4 text-gray-400 text-sm border-t border-gray-800">
     <p class="mb-1 text-base font-medium">
       DESENVOLVEDOR: MARCELO ANDRÉ NOGUEIRA CARDES
@@ -172,5 +191,3 @@ async function gerarPDF() {
   </footer>
 </body>
 </html>
-
-
