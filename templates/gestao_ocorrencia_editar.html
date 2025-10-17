@@ -5,322 +5,233 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Editar Ocorrência</title>
 <script src="https://cdn.tailwindcss.com"></script>
-
 <script>
 tailwind.config = {
-    theme: {
-        extend: {
-            colors: {
-                'dark-primary': '#0F172A',
-                'dark-secondary': '#1E293B',
-                'accent': '#10B981',
-                'text-light': '#F8FAFC',
-                'input-bg': '#374151',
-                'danger': '#DC2626',
-            },
-            fontFamily: {
-                sans: ['Inter', 'sans-serif'],
-            },
-        }
-    }
+  theme: {
+    extend: {
+      colors: {
+        'dark-primary': '#0F172A',
+        'dark-secondary': '#1E293B',
+        'accent': '#10B981',
+        'danger': '#DC2626',
+        'text-light': '#F8FAFC'
+      }
+    }
+  }
 };
-
-let numeroGlobal = null;
-let modoGlobal = 'visualizar'; // Armazena o modo atual (visualizar/atendimento)
-
-document.addEventListener('DOMContentLoaded', () => {
-    const params = new URLSearchParams(window.location.search);
-    numeroGlobal = params.get('id') || params.get('numero');
-    modoGlobal = params.get('modo') || 'visualizar'; // modo pode ser 'atendimento' ou 'visualizar'
-
-    if (!numeroGlobal) {
-        alert('Número da ocorrência não fornecido.');
-        return;
-    }
-
-    carregarDetalhes(numeroGlobal, modoGlobal);
-
-    // evento de salvar
-    document.getElementById('form-atendimento').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        await salvarAtendimento();
-    });
-});
-
-function mostrarMensagem(texto, tipo = 'info') {
-    const msgEl = document.getElementById('mensagem-status');
-    msgEl.textContent = texto;
-    msgEl.classList.remove('hidden', 'bg-accent', 'bg-danger', 'bg-dark-secondary');
-    msgEl.className = 'p-3 mb-4 text-sm font-medium text-white rounded-lg'; // Reset classes
-
-    if (tipo === 'success') msgEl.classList.add('bg-accent');
-    else if (tipo === 'danger' || tipo === 'error') msgEl.classList.add('bg-danger');
-    else msgEl.classList.add('bg-dark-secondary');
-
-    setTimeout(() => msgEl.classList.add('hidden'), 4000);
-}
-
-// O parâmetro 'modo' é passado para manter o contexto de edição/visualização
-async function carregarDetalhes(numero, modo) {
-    try {
-        mostrarMensagem('Carregando detalhes...', 'info');
-        const resp = await fetch(`/api/ocorrencia_detalhes?numero=${encodeURIComponent(numero)}`);
-        if (!resp.ok) throw new Error('Falha ao carregar detalhes.');
-        const occ = await resp.json();
-
-        document.getElementById('numero').textContent = occ.numero || '';
-        document.getElementById('aluno').textContent = occ.aluno_nome || '—';
-        document.getElementById('sala').textContent = occ.sala_nome || '—';
-        document.getElementById('tutor').textContent = occ.tutor_nome || '—';
-        document.getElementById('professor').textContent = occ.professor_nome || '—';
-        document.getElementById('status').textContent = occ.status || '—';
-
-        // Preenche os campos com os dados mais recentes
-        document.getElementById('descricao').value = occ.descricao || '';
-        document.getElementById('atendimento_professor').value = occ.atendimento_professor || '';
-        document.getElementById('atendimento_tutor').value = occ.atendimento_tutor || '';
-        document.getElementById('atendimento_coordenacao').value = occ.atendimento_coordenacao || '';
-        document.getElementById('atendimento_gestao').value = occ.atendimento_gestao || '';
-
-        const campos = [
-            'descricao',
-            'atendimento_professor',
-            'atendimento_tutor',
-            'atendimento_coordenacao',
-            'atendimento_gestao'
-        ];
-
-        if (modo === 'atendimento') {
-            const nivel = (new URLSearchParams(window.location.search)).get('nivel');
-            
-            // Torna todos os campos de atendimento como somente leitura inicialmente
-            campos.forEach(id => {
-                const el = document.getElementById(id);
-                el.readOnly = true;
-                el.classList.add('input-readonly');
-            });
-
-            // Habilita apenas o campo do nível logado
-            if (nivel) {
-                const mapa = {
-                    professor: 'atendimento_professor',
-                    tutor: 'atendimento_tutor',
-                    coordenacao: 'atendimento_coordenacao',
-                    gestao: 'atendimento_gestao'
-                };
-                const campoId = mapa[nivel];
-                const campo = document.getElementById(campoId);
-
-                // Verifica se o campo já está preenchido
-                if (campo.value.trim() !== '') {
-                    // Se já preenchido, mantém readOnly e esconde o botão de salvar
-                    campo.readOnly = true;
-                    document.getElementById('btn-salvar').classList.add('hidden');
-                    mostrarMensagem(`Atendimento de ${nivel} já realizado.`, 'info');
-                } else {
-                    // Se não preenchido, habilita a edição e mostra o botão
-                    campo.readOnly = false;
-                    campo.classList.remove('input-readonly');
-                    campo.focus();
-                    document.getElementById('btn-salvar').classList.remove('hidden');
-                }
-            }
-
-        } else { // Modo visualizar
-            campos.forEach(id => {
-                const el = document.getElementById(id);
-                el.readOnly = true;
-                el.classList.add('input-readonly');
-            });
-            document.getElementById('btn-salvar').classList.add('hidden');
-        }
-
-        mostrarMensagem('Detalhes carregados', 'success');
-    } catch (e) {
-        console.error(e);
-        mostrarMensagem('Erro ao carregar: ' + e.message, 'danger');
-    }
-}
-
-async function salvarAtendimento() {
-    try {
-        const params = new URLSearchParams(window.location.search);
-        const nivel = params.get('nivel');
-        if (!nivel) return mostrarMensagem('Nível não informado', 'danger');
-
-        const mapa = {
-            professor: 'atendimento_professor',
-            tutor: 'atendimento_tutor',
-            coordenacao: 'atendimento_coordenacao',
-            gestao: 'atendimento_gestao'
-        };
-
-        const campoId = mapa[nivel];
-        const texto = document.getElementById(campoId).value.trim();
-        if (!texto) return mostrarMensagem('Preencha o atendimento antes de salvar', 'danger');
-
-        mostrarMensagem('Salvando atendimento...', 'info');
-
-        // 1. Otimização do fetch: Rota correta e JSON.stringify
-        const resp = await fetch(`/api/registrar_atendimento/${numeroGlobal}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nivel: nivel, texto: texto }) // Corrigido
-        });
-
-        const result = await resp.json();
-        if (!resp.ok) throw new Error(result.error || result.message || 'Erro ao salvar');
-
-        mostrarMensagem('Atendimento salvo com sucesso!', 'success');
-
-        // 2. Lógica para simular a "regra de apagar a letra" e atualizar a tela:
-        
-        // Desabilita o campo recém-salvo e esconde o botão de salvar
-        const campo = document.getElementById(campoId);
-        campo.readOnly = true;
-        campo.classList.add('input-readonly');
-        document.getElementById('btn-salvar').classList.add('hidden');
-        
-        // A "regra de apagar a letra" (T, C, G) é aplicada na listagem 
-        // de ocorrências abertas (`/gestao_ocorrencia_abertas`).
-        // Para que a letra desapareça, é necessário que a página de listagem
-        // recarregue e veja que o atendimento já foi registrado.
-        // Por isso, o redirecionamento é a ação final correta.
-
-        setTimeout(() => {
-            // 3. Redireciona para a tela de ocorrências abertas após 1 segundo
-            window.location.href = '/gestao_ocorrencia_abertas';
-        }, 1000); 
-    } catch (e) {
-        console.error(e);
-        mostrarMensagem('Erro ao salvar: ' + e.message, 'danger');
-    }
-}
 </script>
 
 <style>
+body {
+  background-color: #0F172A;
+  color: #F8FAFC;
+  font-family: sans-serif;
+}
 .form-textarea {
-    width: 100%;
-    padding: 0.75rem;
-    border-radius: 0.5rem;
-    background-color: #374151;
-    color: #F8FAFC;
-    border: 1px solid #1E293B;
-    transition: all 0.2s;
+  width: 100%;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  background-color: #374151;
+  color: #F8FAFC;
+  border: 1px solid #1E293B;
+  transition: all 0.2s;
 }
 .form-textarea:focus {
-    outline: none;
-    border-color: #10B981;
-    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.5);
+  outline: none;
+  border-color: #10B981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.5);
 }
 .input-readonly {
-    background-color: #1F2937;
-    cursor: not-allowed;
-    opacity: 0.7;
+  background-color: #1F2937;
+  cursor: not-allowed;
+  opacity: 0.7;
 }
-.text-yellow-400 { color: #FBBF24; }
 </style>
 </head>
 
 <body class="bg-dark-primary font-sans text-text-light">
 <div id="app-container" class="flex flex-col items-center justify-between p-4 md:p-8 min-h-screen">
 
-    <header class="w-full text-center mb-8 mt-4">
-        <h1 class="text-xl sm:text-2xl text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
-            SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR
-        </h1><br>
-        <h2 class="text-base sm:text-lg text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
-            GESTÃO DE OCORRÊNCIAS - EDITAR OCORRÊNCIA
-        </h2>
+  <header class="w-full text-center mb-8 mt-4">
+    <h1 class="text-xl sm:text-2xl text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
+      SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR
+    </h1><br>
+    <h2 class="text-base sm:text-lg text-text-light mt-2 font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
+      GESTÃO DE OCORRÊNCIAS - EDITAR OCORRÊNCIA
+    </h2>
 
-        <div id="btn-voltar-container">
-            <button onclick="window.location.href='/gestao_ocorrencia'"
-                    class="mt-4 px-4 py-2 text-sm font-medium rounded-lg text-gray-300 border border-gray-600 hover:bg-gray-700 transition duration-150 flex items-center mx-auto">
-                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path>
-                </svg>
-                Voltar ao Menu de Ocorrências
-            </button>
-        </div>
-    </header>
+    <div id="btn-voltar-container">
+      <button onclick="window.location.href='/gestao_ocorrencia'"
+              class="mt-4 px-4 py-2 text-sm font-medium rounded-lg text-gray-300 border border-gray-600 hover:bg-gray-700 transition duration-150 flex items-center mx-auto">
+        ← Voltar ao Menu de Ocorrências
+      </button>
+    </div>
+  </header>
 
-    <main class="w-full max-w-4xl flex-grow flex justify-center">
-        <div class="card w-full p-6 md:p-8 bg-dark-secondary rounded-xl shadow-2xl mb-8">
-            <div id="mensagem-status" class="hidden p-3 mb-4 text-sm font-medium text-white rounded-lg" role="alert"></div>
+  <main class="w-full max-w-4xl flex-grow flex justify-center">
+    <div class="card w-full p-6 md:p-8 bg-dark-secondary rounded-xl shadow-2xl mb-8">
+      <div id="mensagem-status" class="hidden p-3 mb-4 text-sm font-medium text-white rounded-lg" role="alert"></div>
 
-            <div class="mb-4 text-gray-300">
-                <strong>Número:</strong> <span id="numero" class="ml-2 text-accent"></span>
-            </div>
+      <div class="mb-4 text-gray-300">
+        <strong>Número:</strong> <span id="numero" class="ml-2 text-accent"></span>
+      </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div>
-                    <label>Aluno</label>
-                    <div id="aluno" class="p-2 bg-gray-700 rounded-lg text-sm"></div>
-                </div>
-                <div>
-                    <label>Sala</label>
-                    <div id="sala" class="p-2 bg-gray-700 rounded-lg text-sm"></div>
-                </div>
-            </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div>
+          <label>Aluno</label>
+          <div id="aluno" class="p-2 bg-gray-700 rounded-lg text-sm"></div>
+        </div>
+        <div>
+          <label>Sala</label>
+          <div id="sala" class="p-2 bg-gray-700 rounded-lg text-sm"></div>
+        </div>
+      </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div>
-                    <label>Professor Responsável</label>
-                    <div id="professor" class="p-2 bg-gray-700 rounded-lg text-sm"></div>
-                </div>
-                <div>
-                    <label>Tutor</label>
-                    <div id="tutor" class="p-2 bg-gray-700 rounded-lg text-sm"></div>
-                </div>
-            </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div>
+          <label>Professor Responsável</label>
+          <div id="professor" class="p-2 bg-gray-700 rounded-lg text-sm"></div>
+        </div>
+        <div>
+          <label>Tutor</label>
+          <div id="tutor" class="p-2 bg-gray-700 rounded-lg text-sm"></div>
+        </div>
+      </div>
 
-            <div class="mb-6">
-                <label>Status</label>
-                <div id="status" class="p-2 bg-gray-700 rounded-lg text-sm"></div>
-            </div>
+      <div class="mb-6">
+        <label>Status</label>
+        <div id="status" class="p-2 bg-gray-700 rounded-lg text-sm"></div>
+      </div>
 
-            <div class="mb-6">
-                <label for="descricao">Descrição</label>
-                <textarea id="descricao" rows="3" class="form-textarea"></textarea>
-            </div>
+      <div class="mb-6">
+        <label for="descricao">Descrição</label>
+        <textarea id="descricao" rows="3" class="form-textarea input-readonly" readonly></textarea>
+      </div>
 
-            <form id="form-atendimento">
-                <div class="mb-4">
-                    <label>Atendimento Professor</label>
-                    <textarea id="atendimento_professor" rows="2" class="form-textarea"></textarea>
-                </div>
-                <div class="mb-4">
-                    <label>Atendimento Tutor</label>
-                    <textarea id="atendimento_tutor" rows="2" class="form-textarea"></textarea>
-                </div>
-                <div class="mb-4">
-                    <label>Atendimento Coordenação</label>
-                    <textarea id="atendimento_coordenacao" rows="2" class="form-textarea"></textarea>
-                </div>
-                <div class="mb-6">
-                    <label>Atendimento Gestão</label>
-                    <textarea id="atendimento_gestao" rows="2" class="form-textarea"></textarea>
-                </div>
+      <form id="form-atendimento">
+        <div class="mb-4">
+          <label>Atendimento Professor</label>
+          <textarea id="atendimento_professor" rows="2" class="form-textarea input-readonly" readonly></textarea>
+        </div>
+        <div class="mb-4">
+          <label>Atendimento Tutor</label>
+          <textarea id="atendimento_tutor" rows="2" class="form-textarea"></textarea>
+        </div>
+        <div class="mb-4">
+          <label>Atendimento Coordenação</label>
+          <textarea id="atendimento_coordenacao" rows="2" class="form-textarea"></textarea>
+        </div>
+        <div class="mb-6">
+          <label>Atendimento Gestão</label>
+          <textarea id="atendimento_gestao" rows="2" class="form-textarea"></textarea>
+        </div>
 
-                <button id="btn-salvar" type="submit"
-                        class="hidden w-full bg-accent hover:bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg transition duration-200 ease-in-out shadow-lg shadow-emerald-500/50 flex items-center justify-center space-x-2 transform hover:scale-[1.01]">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    <span>SALVAR ATENDIMENTO</span>
-                </button>
-            </form>
-        </div>
-    </main>
+        <button id="btn-salvar" type="submit"
+                class="hidden w-full bg-accent hover:bg-emerald-600 text-white font-bold py-3 px-4 rounded-lg transition duration-200 ease-in-out shadow-lg shadow-emerald-500/50 flex items-center justify-center space-x-2 transform hover:scale-[1.01]">
+          💾 <span>SALVAR ATENDIMENTO</span>
+        </button>
+      </form>
+    </div>
+  </main>
 
-    <footer class="w-full text-center mt-10 p-4 text-gray-400 text-sm border-t border-gray-800">
-        <p class="mb-1 text-base font-medium">
-            DESENVOLVEDOR: MARCELO ANDRÉ NOGUEIRA CARDES
-        </p>
-        <p class="text-xs font-light tracking-wide">
-            LICENCIADO COMO TESTE PARA E.E. PEI PROFESSORA IRENE DIAS RIBEIRO
-        </p>
-    </footer>
+  <footer class="w-full text-center mt-10 p-4 text-gray-400 text-sm border-t border-gray-800">
+    <p class="mb-1 text-base font-medium">
+      DESENVOLVEDOR: MARCELO ANDRÉ NOGUEIRA CARDES
+    </p>
+    <p class="text-xs font-light tracking-wide">
+      LICENCIADO: E.E. PEI PROFESSORA IRENE DIAS RIBEIRO
+    </p>
+  </footer>
 </div>
+
+<script>
+let numeroGlobal = null;
+
+function mostrarMensagem(texto, tipo = 'info') {
+  const msg = document.getElementById('mensagem-status');
+  msg.textContent = texto;
+  msg.classList.remove('hidden', 'bg-accent', 'bg-danger', 'bg-dark-secondary');
+  if (tipo === 'success') msg.classList.add('bg-accent');
+  else if (tipo === 'danger') msg.classList.add('bg-danger');
+  else msg.classList.add('bg-dark-secondary');
+  setTimeout(() => msg.classList.add('hidden'), 4000);
+}
+
+async function carregarDetalhes(numero) {
+  try {
+    mostrarMensagem('Carregando...', 'info');
+    const resp = await fetch(`/api/ocorrencia_detalhes?numero=${numero}`);
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+
+    document.getElementById('numero').textContent = data.numero;
+    document.getElementById('aluno').textContent = data.aluno_nome;
+    document.getElementById('sala').textContent = data.sala_nome;
+    document.getElementById('professor').textContent = data.professor_nome;
+    document.getElementById('tutor').textContent = data.tutor_nome;
+    document.getElementById('status').textContent = data.status;
+    document.getElementById('descricao').value = data.descricao || '';
+    document.getElementById('atendimento_professor').value = data.atendimento_professor || '';
+    document.getElementById('atendimento_tutor').value = data.atendimento_tutor || '';
+    document.getElementById('atendimento_coordenacao').value = data.atendimento_coordenacao || '';
+    document.getElementById('atendimento_gestao').value = data.atendimento_gestao || '';
+
+    if (
+      !data.atendimento_tutor ||
+      !data.atendimento_coordenacao ||
+      !data.atendimento_gestao
+    ) {
+      document.getElementById('btn-salvar').classList.remove('hidden');
+    }
+
+    mostrarMensagem('Detalhes carregados', 'success');
+  } catch (e) {
+    console.error(e);
+    mostrarMensagem('Erro ao carregar: ' + e.message, 'danger');
+  }
+}
+
+async function salvarAtendimento() {
+  try {
+    const nivel = ['tutor', 'coordenacao', 'gestao'].find(n =>
+      document.getElementById(`atendimento_${n}`).value.trim() &&
+      !document.getElementById(`atendimento_${n}`).readOnly
+    );
+    if (!nivel) return mostrarMensagem('Nenhum campo de atendimento preenchido', 'danger');
+
+    const texto = document.getElementById(`atendimento_${nivel}`).value.trim();
+
+    mostrarMensagem('Salvando atendimento...', 'info');
+
+    const resp = await fetch(`/api/registrar_atendimento/${numeroGlobal}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ nivel, texto })
+    });
+    const result = await resp.json();
+
+    if (!resp.ok || result.error) throw new Error(result.error || 'Erro ao salvar');
+
+    mostrarMensagem('Atendimento salvo com sucesso!', 'success');
+    setTimeout(() => {
+      window.location.href = '/gestao_ocorrencia';
+    }, 1000);
+  } catch (e) {
+    console.error(e);
+    mostrarMensagem('Erro ao salvar: ' + e.message, 'danger');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const params = new URLSearchParams(window.location.search);
+  numeroGlobal = params.get('id') || params.get('numero');
+  if (!numeroGlobal) return mostrarMensagem('Ocorrência não especificada', 'danger');
+  carregarDetalhes(numeroGlobal);
+  document.getElementById('form-atendimento').addEventListener('submit', e => {
+    e.preventDefault();
+    salvarAtendimento();
+  });
+});
+</script>
 </body>
 </html>
