@@ -1695,10 +1695,45 @@ def api_relatorio_frequencia_detalhada():
         return jsonify({"error": f"Erro ao gerar relatório: {e}"}), 500
 
 
+@app.route('/api/ocorrencias_por_aluno/<aluno_id>', methods=['GET'])
+def api_ocorrencias_por_aluno(aluno_id):
+    """Busca todas as ocorrências de um aluno específico."""
+    if not aluno_id:
+        return jsonify({"error": "ID do aluno é obrigatório."}), 400
+    try:
+        aluno_id_bigint = int(aluno_id)
+        
+        # Seleciona apenas os campos necessários
+        resp = supabase.table('ocorrencias').select(
+            "numero, data_hora, descricao, status, aluno_nome, aluno_id, sala_id"
+        ).eq('aluno_id', aluno_id_bigint).order('data_hora', desc=True).execute()
+        
+        ocorrencias_raw = resp.data  # ou handle_supabase_response(resp), dependendo da sua função
+        
+        # Formata os dados
+        ocorrencias_formatadas = [
+            {
+                "numero": o.get("numero"),
+                "data_hora": o.get("data_hora"),
+                "descricao": o.get("descricao"),
+                "status": o.get("status"),
+                "aluno_nome": o.get("aluno_nome")
+            } for o in ocorrencias_raw
+        ]
+        
+        return jsonify(ocorrencias_formatadas), 200
+    except ValueError:
+        return jsonify({"error": "ID do aluno inválido."}), 400
+    except Exception as e:
+        return jsonify({"error": f"Falha ao buscar ocorrências: {str(e)}"}), 500
+
+
+
 # =========================================================
 # EXECUÇÃO
 # =========================================================
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
 
