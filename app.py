@@ -1727,6 +1727,94 @@ def api_ocorrencias_por_aluno(aluno_id):
     except Exception as e:
         return jsonify({"error": f"Falha ao buscar ocorrências: {str(e)}"}), 500
 
+from flask import send_file
+import io
+from fpdf import FPDF  # ou qualquer biblioteca de PDF que você use
+
+from flask import Flask, request, send_file, jsonify
+import io
+from fpdf import FPDF
+
+app = Flask(__name__)
+
+@app.route('/api/gerar_pdf_ocorrencias', methods=['POST'])
+def gerar_pdf_ocorrencias():
+    dados = request.get_json()
+    numeros = dados.get('numeros', [])
+
+    if not numeros:
+        return jsonify({"error": "Nenhuma ocorrência selecionada"}), 400
+
+    try:
+        # Buscar ocorrências no Supabase
+        resp = supabase.table('ocorrencias').select(
+            "numero, data_hora, descricao, status, aluno_nome, sala_id, tutor, atendimento_professor, atendimento_tutor, atendimento_coordenacao, atendimento_gestao"
+        ).in_('numero', numeros).order('data_hora', desc=True).execute()
+
+        ocorrencias = resp.data
+
+        if not ocorrencias:
+            return jsonify({"error": "Nenhuma ocorrência encontrada"}), 404
+
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.set_font("Arial", "B", 14)
+        pdf.cell(0, 10, "RELATÓRIO DE REGISTRO DE OCORRÊNCIAS", ln=True, align='C')
+        pdf.set_font("Arial", "", 12)
+        pdf.cell(0, 7, "E.E. PEI PROFESSOR IRENE DIAS RIBEIRO", ln=True, align='C')
+        pdf.ln(5)
+
+        # Cabeçalho do aluno (usando primeira ocorrência)
+        aluno_nome = ocorrencias[0].get("aluno_nome", "Aluno Desconhecido")
+        sala = ocorrencias[0].get("sala_id", "Indefinida")
+        tutor = ocorrencias[0].get("tutor", "Indefinido")
+        pdf.cell(0, 7, f"Aluno: {aluno_nome}    Sala: {sala}", ln=True)
+        pdf.cell(0, 7, f"Tutor: {tutor}", ln=True)
+        pdf.ln(5)
+
+        for o in ocorrencias:
+            pdf.set_font("Arial", "B", 12)
+            pdf.cell(0, 7, f"Ocorrência nº: {o.get('numero')}", ln=True)
+            pdf.set_font("Arial", "", 12)
+            data_hora = o.get('data_hora', '')
+            if data_hora:
+                data, hora = str(data_hora).split(' ')
+            else:
+                data, hora = '', ''
+            pdf.cell(0, 6, f"Data: {data}    Hora: {hora}", ln=True)
+            professor = o.get('atendimento_professor', '---')
+            pdf.cell(0, 6, f"Professor: {professor}", ln=True)
+            pdf.multi_cell(0, 6, f"Descrição:\n{o.get('descricao', '')}")
+            
+            pdf.cell(0, 6, f"Atendimento Professor:\n{o.get('atendimento_professor', '')}", ln=True)
+            pdf.cell(0, 6, f"Atendimento Tutor (Se solicitado):\n{o.get('atendimento_tutor', '')}", ln=True)
+            pdf.cell(0, 6, f"Atendimento Coordenação (Se solicitado):\n{o.get('atendimento_coordenacao', '')}", ln=True)
+            pdf.cell(0, 6, f"Atendimento Gestão (Se solicitado):\n{o.get('atendimento_gestao', '')}", ln=True)
+            pdf.ln(3)
+            pdf.line(10, pdf.get_y(), 200, pdf.get_y())  # linha separadora
+            pdf.ln(3)
+
+        # Assinatura no final
+        pdf.ln(10)
+        pdf.cell(0, 10, "Assinatura Responsável: _______________________________", ln=True)
+        pdf.cell(0, 10, "Data: ___ / ___ / ______", ln=True)
+
+        pdf_buffer = io.BytesIO()
+        pdf.output(pdf_buffer)
+        pdf_buffer.seek(0)
+
+        nome_arquivo = aluno_nome.replace(' ', '_') + "_ocorrencias.pdf"
+        return send_file(
+            pdf_buffer,
+            as_attachment=True,
+            download_name=nome_arquivo,
+            mimetype='application/pdf'
+        )
+
+    except Exception as e:
+        return jsonify({"error": f"Falha ao gerar PDF: {str(e)}"}), 500
+
 
 
 # =========================================================
@@ -1735,5 +1823,6 @@ def api_ocorrencias_por_aluno(aluno_id):
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
 
 
