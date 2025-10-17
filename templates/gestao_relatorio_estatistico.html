@@ -1,184 +1,237 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Relatório Geral Estatístico de Ocorrências</title>
-
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            'dark-primary': '#0F172A',
-            'dark-secondary': '#1E293B',
-            'accent': '#10B981',
-            'text-light': '#F8FAFC',
-          }
-        }
-      }
-    };
-
-    async function carregarDadosRelatorio() {
-      try {
-        const resposta = await fetch('/api/relatorio_estatistico');
-        const data = await resposta.json();
-
-        console.log("📊 Dados recebidos:", data);
-        console.log("Total de registros:", data.length);
-
-        // Mostra mensagem no topo
-        const msg = document.getElementById('mensagem-status');
-        msg.classList.remove('hidden');
-        msg.textContent = `✅ ${data.length} registros carregados com sucesso.`;
-        msg.classList.add('bg-green-700');
-
-        // Exemplo: preencher contadores básicos
-        document.getElementById('total-ocorrencias').textContent = data.length;
-        document.getElementById('abertas-ocorrencias').textContent = data.filter(o => o.status === 'Aberta').length;
-        document.getElementById('finalizadas-ocorrencias').textContent = data.filter(o => o.status === 'Finalizada').length;
-
-        // Preencher gráficos
-        const resumoRespostas = {
-          labels: ['Rápida (<7d)', 'Lenta (>7d)', 'Não Respondida'],
-          datasets: [{
-            label: 'Tempo de Resposta',
-            data: [
-              data.filter(o => o.dias_resposta <= 7).length,
-              data.filter(o => o.dias_resposta > 7 && o.dias_resposta !== null).length,
-              data.filter(o => !o.dias_resposta).length
-            ],
-            backgroundColor: ['#10B981', '#F59E0B', '#EF4444'],
-            borderRadius: 6
-          }]
-        };
-
-        const resumoTutor = (() => {
-          const agrupado = {};
-          data.forEach(o => {
-            const t = o.tutor || 'Sem Tutor';
-            agrupado[t] = (agrupado[t] || 0) + 1;
-          });
-          return {
-            labels: Object.keys(agrupado),
-            datasets: [{
-              label: 'Ocorrências',
-              data: Object.values(agrupado),
-              backgroundColor: ['#3B82F6', '#EC4899', '#FCD34D', '#8B5CF6', '#22D3EE', '#84CC16']
-            }]
-          };
-        })();
-
-        initCharts(resumoTutor, resumoRespostas);
-      } catch (erro) {
-        console.error("❌ Erro ao carregar relatório:", erro);
-        const msg = document.getElementById('mensagem-status');
-        msg.classList.remove('hidden');
-        msg.textContent = "❌ Erro ao carregar os dados do relatório.";
-        msg.classList.add('bg-red-700');
-      }
-    }
-
-    function initCharts(dataTutor, dataRespostas) {
-      // Chart: Tempo de Resposta
-      const ctxRespostas = document.getElementById('chart-respostas').getContext('2d');
-      new Chart(ctxRespostas, {
-        type: 'bar',
-        data: dataRespostas,
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: {
-            y: {
-              beginAtZero: true,
-              ticks: { color: '#F8FAFC' },
-              grid: { color: 'rgba(255, 255, 255, 0.1)' }
-            },
-            x: {
-              ticks: { color: '#F8FAFC' },
-              grid: { color: 'rgba(255, 255, 255, 0.1)' }
-            }
-          }
-        }
-      });
-
-      // Chart: Ocorrências por Tutor
-      const ctxTutor = document.getElementById('chart-tutor').getContext('2d');
-      new Chart(ctxTutor, {
-        type: 'doughnut',
-        data: dataTutor,
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          cutout: '65%',
-          plugins: {
-            legend: { position: 'bottom', labels: { color: '#F8FAFC', padding: 10 } }
-          }
-        }
-      });
-    }
-
-    document.addEventListener('DOMContentLoaded', carregarDadosRelatorio);
-  </script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Relatório Estatístico</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body { background-color: #0F172A; color: #F8FAFC; font-family: sans-serif; }
+.card { background-color: #1E293B; border-radius: 1rem; padding: 2rem; margin-bottom: 2rem; }
+h2 { color: #10B981; margin-bottom: 1rem; }
+table { width: 100%; border-collapse: collapse; margin-bottom: 2rem; }
+th, td { border: 1px solid #334155; padding: 0.5rem; text-align: left; }
+th { background-color: #334155; }
+canvas { background-color: #1E293B; border-radius: 0.5rem; }
+</style>
 </head>
+<body class="p-4 md:p-8">
 
-<body class="bg-dark-primary text-text-light font-sans min-h-screen p-6">
+<div class="max-w-6xl mx-auto">
 
-  <header class="text-center mb-10">
-    <h1 class="text-2xl font-light border-b border-gray-700 pb-2 inline-block">
-      SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR
-    </h1><br>
-    <h2 class="text-lg font-light border-b border-gray-700 pb-2 inline-block">
-      RELATÓRIO GERAL ESTATÍSTICO DE OCORRÊNCIAS
-    </h2>
-    <button onclick="window.location.href='/gestao_relatorio'"
-      class="mt-4 px-5 py-2 text-sm font-medium rounded-lg text-gray-300 border border-gray-600 hover:bg-gray-700 transition duration-150 flex items-center mx-auto">
-      <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path>
-      </svg>
-      Voltar ao Menu Relatórios
-    </button>
-  </header>
+    <header class="mb-6 text-center">
+        <h1 class="text-3xl font-bold text-accent">Relatório Estatístico de Ocorrências</h1>
+    </header>
 
-  <div id="mensagem-status" class="hidden text-center text-white px-4 py-2 rounded-lg my-4 mx-auto max-w-md"></div>
-
-  <section class="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-6 mb-10 text-center">
-    <div class="bg-dark-secondary p-6 rounded-2xl shadow-lg">
-      <h3 class="text-gray-400 text-sm mb-2">Total de Ocorrências</h3>
-      <p id="total-ocorrencias" class="text-3xl font-bold text-indigo-400">0</p>
+    <!-- Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div class="card text-center">
+            <h2>Total Ocorrências</h2>
+            <p id="total-ocorrencias" class="text-2xl font-bold">0</p>
+        </div>
+        <div class="card text-center">
+            <h2>Ocorrências Abertas</h2>
+            <p id="abertas-ocorrencias" class="text-2xl font-bold">0</p>
+        </div>
+        <div class="card text-center">
+            <h2>Ocorrências Finalizadas</h2>
+            <p id="finalizadas-ocorrencias" class="text-2xl font-bold">0</p>
+        </div>
     </div>
-    <div class="bg-dark-secondary p-6 rounded-2xl shadow-lg">
-      <h3 class="text-gray-400 text-sm mb-2">Abertas</h3>
-      <p id="abertas-ocorrencias" class="text-3xl font-bold text-yellow-400">0</p>
-    </div>
-    <div class="bg-dark-secondary p-6 rounded-2xl shadow-lg">
-      <h3 class="text-gray-400 text-sm mb-2">Finalizadas</h3>
-      <p id="finalizadas-ocorrencias" class="text-3xl font-bold text-accent">0</p>
-    </div>
-  </section>
 
-  <section class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 mt-10">
-    <div class="bg-dark-secondary p-6 rounded-2xl shadow-lg flex flex-col items-center">
-      <h3 class="text-lg font-semibold mb-3 border-b border-gray-700 pb-2 w-full text-left">Tempo de Resposta</h3>
-      <div class="w-full max-w-sm" style="height: 220px;">
-        <canvas id="chart-respostas"></canvas>
-      </div>
+    <!-- Resumo Geral -->
+    <div class="card">
+        <h2>Resumo Geral por Tipo</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Tipo</th>
+                    <th>Qtd</th>
+                    <th>%</th>
+                </tr>
+            </thead>
+            <tbody id="tabela-resumo-geral"></tbody>
+        </table>
+        <canvas id="chart-tipo" height="180"></canvas>
     </div>
-    <div class="bg-dark-secondary p-6 rounded-2xl shadow-lg flex flex-col items-center">
-      <h3 class="text-lg font-semibold mb-3 border-b border-gray-700 pb-2 w-full text-left">Ocorrências por Tutor</h3>
-      <div class="w-full max-w-sm" style="height: 220px;">
-        <canvas id="chart-tutor"></canvas>
-      </div>
-    </div>
-  </section>
 
-  <footer class="w-full text-center mt-12 p-4 text-gray-400 text-sm border-t border-gray-800">
-    <p class="mb-1 text-base font-medium">DESENVOLVEDOR: MARCELO ANDRÉ NOGUEIRA CARDES</p>
-    <p class="text-xs font-light tracking-wide">LICENCIADO: E.E. PEI PROFESSORA IRENE DIAS RIBEIRO</p>
-  </footer>
+    <!-- Ocorrências por Sala -->
+    <div class="card">
+        <h2>Ocorrências por Sala</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Sala</th>
+                    <th>Total</th>
+                    <th>% do Total</th>
+                    <th>Menos 7 dias</th>
+                    <th>Mais 7 dias</th>
+                    <th>Não Respondidas</th>
+                </tr>
+            </thead>
+            <tbody id="tabela-por-sala"></tbody>
+        </table>
+        <canvas id="chart-respostas" height="180"></canvas>
+    </div>
+
+    <!-- Ocorrências por Tutor -->
+    <div class="card">
+        <h2>Ocorrências por Tutor</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Tutor</th>
+                    <th>Total</th>
+                    <th>Finalizadas</th>
+                    <th>Abertas</th>
+                    <th>Média Dias Resposta</th>
+                </tr>
+            </thead>
+            <tbody id="tabela-por-tutor"></tbody>
+        </table>
+        <canvas id="chart-tutor" height="180"></canvas>
+    </div>
+
+    <!-- Ocorrências por Mês -->
+    <div class="card">
+        <h2>Ocorrências por Mês</h2>
+        <canvas id="chart-mes" height="180"></canvas>
+    </div>
+
+    <div id="mensagem-status" class="hidden p-3 mb-4 text-sm font-medium text-white rounded-lg" role="alert"></div>
+
+</div>
+
+<script>
+// JS para relatório estatístico de ocorrências
+
+let chartRespostas = null;
+let chartTutor = null;
+let chartTipo = null;
+let chartMes = null;
+
+async function carregarEstatisticas() {
+    try {
+        const response = await fetch('/api/relatorio_estatistico');
+        const data = await response.json();
+
+        document.getElementById('total-ocorrencias').textContent = data.total ?? 0;
+        document.getElementById('abertas-ocorrencias').textContent = data.abertas ?? 0;
+        document.getElementById('finalizadas-ocorrencias').textContent = data.finalizadas ?? 0;
+
+        const total = data.total ?? 1;
+        const tipos = data.tipos ?? {};
+        let resumoHTML = "";
+        Object.entries(tipos).forEach(([tipo, count]) => {
+            const pct = ((count / total) * 100).toFixed(1);
+            resumoHTML += `<tr>
+                <td>${tipo}</td>
+                <td>${count}</td>
+                <td>${pct}%</td>
+            </tr>`;
+        });
+        document.getElementById('tabela-resumo-geral').innerHTML = resumoHTML;
+
+        if(Array.isArray(data.por_sala)) {
+            let porSalaHTML = "";
+            data.por_sala.forEach(item => {
+                const pct = ((item.total / total) * 100).toFixed(1);
+                porSalaHTML += `<tr>
+                    <td>${item.sala || 'Indefinida'}</td>
+                    <td>${item.total}</td>
+                    <td>${pct}%</td>
+                    <td>${item.menos_7d ?? '-'}</td>
+                    <td>${item.mais_7d ?? '-'}</td>
+                    <td>${item.nao_respondidas ?? '-'}</td>
+                </tr>`;
+            });
+            document.getElementById('tabela-por-sala').innerHTML = porSalaHTML;
+        }
+
+        if(Array.isArray(data.por_tutor)) {
+            let porTutorHTML = "";
+            data.por_tutor.forEach(item => {
+                porTutorHTML += `<tr>
+                    <td>${item.tutor || 'Indefinido'}</td>
+                    <td>${item.total}</td>
+                    <td>${item.finalizadas}</td>
+                    <td>${item.abertas}</td>
+                    <td>${item.media_dias_resposta ?? '-'}</td>
+                </tr>`;
+            });
+            document.getElementById('tabela-por-tutor').innerHTML = porTutorHTML;
+        }
+
+        if(data.tempo_resposta?.labels?.length && data.tempo_resposta?.valores?.length) criarGraficoRespostas(data.tempo_resposta);
+        if(Array.isArray(data.por_tutor) && data.por_tutor.length > 0) criarGraficoTutor(data.por_tutor);
+        if(Object.keys(tipos).length > 0) criarGraficoTipo(tipos);
+        if(data.ocorrencias_por_mes?.labels?.length && data.ocorrencias_por_mes?.valores?.length) criarGraficoPorMes(data.ocorrencias_por_mes);
+
+    } catch(err) {
+        const msgEl = document.getElementById('mensagem-status');
+        msgEl.classList.remove('hidden');
+        msgEl.textContent = 'Erro ao carregar estatísticas: ' + err;
+    }
+}
+
+function gerarCores(n) {
+    const cores = [];
+    for(let i=0;i<n;i++){
+        const r = Math.floor(Math.random()*200)+50;
+        const g = Math.floor(Math.random()*200)+50;
+        const b = Math.floor(Math.random()*200)+50;
+        cores.push(`rgba(${r},${g},${b},0.7)`);
+    }
+    return cores;
+}
+
+function criarGraficoRespostas(tempo_resposta){
+    const el = document.getElementById('chart-respostas');
+    if(!el) return;
+    if(chartRespostas) chartRespostas.destroy();
+    chartRespostas = new Chart(el.getContext('2d'), {
+        type:'bar',
+        data:{labels:tempo_resposta.labels,datasets:[{label:'Qtd Ocorrências',data:tempo_resposta.valores,backgroundColor:'rgba(99,102,241,0.6)'}]},
+        options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'Faixa de Dias'}},y:{beginAtZero:true}}}
+    });
+}
+
+function criarGraficoTutor(por_tutor){
+    const el = document.getElementById('chart-tutor');
+    if(!el) return;
+    if(chartTutor) chartTutor.destroy();
+    chartTutor = new Chart(el.getContext('2d'), {
+        type:'pie',
+        data:{labels:por_tutor.map(x=>x.tutor),datasets:[{data:por_tutor.map(x=>x.total),backgroundColor:gerarCores(por_tutor.length)}]},
+        options:{plugins:{legend:{position:'bottom'}}}
+    });
+}
+
+function criarGraficoTipo(tipos){
+    const el = document.getElementById('chart-tipo');
+    if(!el) return;
+    if(chartTipo) chartTipo.destroy();
+    chartTipo = new Chart(el.getContext('2d'), {
+        type:'pie',
+        data:{labels:Object.keys(tipos),datasets:[{data:Object.values(tipos),backgroundColor:gerarCores(Object.keys(tipos).length)}]},
+        options:{plugins:{legend:{position:'bottom'}}}
+    });
+}
+
+function criarGraficoPorMes(ocorrencias_por_mes){
+    const el = document.getElementById('chart-mes');
+    if(!el) return;
+    if(chartMes) chartMes.destroy();
+    chartMes = new Chart(el.getContext('2d'), {
+        type:'bar',
+        data:{labels:ocorrencias_por_mes.labels,datasets:[{label:'Ocorrências por Mês',data:ocorrencias_por_mes.valores,backgroundColor:'rgba(251,191,36,0.7)'}]},
+        options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'Mês'}},y:{beginAtZero:true}}}
+    });
+}
+
+window.addEventListener('DOMContentLoaded', carregarEstatisticas);
+</script>
+
 </body>
 </html>
