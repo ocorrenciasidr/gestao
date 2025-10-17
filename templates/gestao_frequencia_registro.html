@@ -42,6 +42,27 @@
   </style>
 </head>
 <body class="flex flex-col items-center justify-center min-h-screen">
+
+  <!-- HEADER -->
+  <header class="text-center mb-8 mt-4">
+    <h1 class="text-2xl text-text-light mt-2 font-light border-b border-gray-700 pb-2 inline-block">
+      SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR
+    </h1><br>
+    <h2 class="text-lg text-text-light mt-2 font-light border-b border-gray-700 pb-2 inline-block">
+      GESTÃO DE FREQUÊNCIA - REGISTRO DE FREQUÊNCIA 
+    </h2>
+    <button onclick="window.location.href='/gestao_ocorrencia'"
+      class="mt-4 px-4 py-2 text-sm font-medium rounded-lg text-gray-300 border border-gray-600 hover:bg-gray-700 transition duration-150 flex items-center mx-auto">
+      <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+        xmlns="http://www.w3.org/2000/svg">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M4 6h16M4 12h16M4 18h7"></path>
+      </svg>
+      Voltar ao Menu de Ocorrências
+    </button>
+  </header>
+
+  <!-- CONTEÚDO PRINCIPAL -->
   <div class="w-full max-w-5xl flex-grow p-4">
     <h1 class="text-3xl font-extrabold mb-6 text-center text-accent-success tracking-wide">
       REGISTRO DE FREQUÊNCIA
@@ -94,7 +115,8 @@
       class="hidden bg-dark-secondary p-10 mt-8 rounded-xl shadow-2xl text-center border border-gray-600">
       <h2 class="text-2xl font-extrabold text-accent-success mb-4">FREQUÊNCIA JÁ REGISTRADA</h2>
       <p class="text-lg leading-relaxed text-gray-200">
-        A frequência desta <span class="text-secondary-accent font-bold">sala</span> e desta <span class="text-secondary-accent font-bold">data</span>
+        A frequência desta <span class="text-secondary-accent font-bold">sala</span> e desta <span
+          class="text-secondary-accent font-bold">data</span>
         já foi registrada anteriormente.<br><br>
         Para realizar qualquer alteração, utilize as telas:
         <br>
@@ -103,6 +125,16 @@
       </p>
     </div>
   </div>
+
+  <!-- FOOTER -->
+  <footer class="w-full text-center mt-10 p-4 text-gray-400 text-sm border-t border-gray-800">
+    <p class="mb-1 text-base font-medium">
+      DESENVOLVEDOR: MARCELO ANDRÉ NOGUEIRA CARDES
+    </p>
+    <p class="text-xs font-light tracking-wide">
+      LICENCIADO: E.E. PEI PROFESSORA IRENE DIAS RIBEIRO
+    </p>
+  </footer>
 
   <script>
     let salasData = [];
@@ -126,7 +158,7 @@
         salasData.forEach(sala => {
           selectSala.innerHTML += `<option value="${sala.id}">${sala.nome}</option>`;
         });
-      } catch (error) {
+      } catch {
         mostrarMsg('Erro ao carregar salas.', 'alert-danger');
       }
     }
@@ -162,12 +194,10 @@
         const statusData = await statusResponse.json();
 
         if (statusData.registrada) {
-          // Frequência já registrada → mostra só a mensagem
           statusDiv.innerHTML = `<span class="text-accent-success font-bold">Frequência já registrada.</span>`;
           isLocked = true;
           mensagemTravada.classList.remove('hidden');
         } else {
-          // Nova frequência → libera a lista
           statusDiv.innerHTML = `<span class="text-secondary-accent font-bold">Frequência pendente.</span>`;
           alunosContainer.classList.remove('hidden');
           document.getElementById('btn-salvar-frequencia').classList.remove('hidden');
@@ -183,7 +213,8 @@
       tbody.innerHTML = '';
 
       alunosData.forEach(aluno => {
-        const currentStatus = frequenciaData[aluno.id] || 'F';
+        const currentStatus = frequenciaData[aluno.id] || 'P'; // Agora inicia com P
+        frequenciaData[aluno.id] = currentStatus; // Garante o valor inicial
         const colorClass = currentStatus === 'P' ? 'status-P' : 'status-F';
 
         const tr = document.createElement('tr');
@@ -242,7 +273,7 @@
         if (!response.ok) throw new Error(result.error);
         mostrarMsg(result.message, 'accent-success');
         checkFrequencyStatus();
-      } catch (err) {
+      } catch {
         mostrarMsg('Erro ao salvar.', 'alert-danger');
       }
     }
