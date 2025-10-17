@@ -7,21 +7,95 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-</head>
-<body class="bg-gray-900 text-gray-200 font-sans min-h-screen p-6">
 
-    <!-- Cabeçalho -->
-    <header class="text-center mb-8">
-        <h1 class="text-2xl font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
+    <script>
+        // Configuração Tailwind para cores padronizadas
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'dark-primary': '#0F172A',
+                        'dark-secondary': '#1E293B',
+                        'accent': '#10B981',
+                        'text-light': '#F8FAFC',
+                    }
+                }
+            }
+        };
+
+        // Função para inicializar gráficos com altura reduzida (height="200" no HTML é ignorado se não houver container limitante)
+        function initCharts(dataTutor, dataRespostas) {
+            // Se houver necessidade de mock data, use aqui, mas o ideal é que venha do arquivo JS externo.
+            // A altura será controlada pelo container div.chart-container-small
+            
+            // Gráfico 1: Tempo de Resposta
+            const ctxRespostas = document.getElementById('chart-respostas').getContext('2d');
+            new Chart(ctxRespostas, {
+                type: 'bar',
+                data: dataRespostas || {
+                    labels: ['Rápida (<7d)', 'Lenta (>7d)', 'Não Respondida'],
+                    datasets: [{
+                        label: 'Tempo de Resposta',
+                        data: [1, 2, 3], // Dados de exemplo, substitua por data real
+                        backgroundColor: ['#10B981', '#F59E0B', '#EF4444'],
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false, // Permite que a altura seja controlada pelo container
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' } },
+                        x: { grid: { color: 'rgba(255, 255, 255, 0.1)' } }
+                    }
+                }
+            });
+
+            // Gráfico 2: Ocorrências por Tutor
+            const ctxTutor = document.getElementById('chart-tutor').getContext('2d');
+            new Chart(ctxTutor, {
+                type: 'doughnut',
+                data: dataTutor || {
+                    labels: ['Tutor A', 'Tutor B', 'Outros'],
+                    datasets: [{
+                        label: 'Ocorrências',
+                        data: [4, 5, 2], // Dados de exemplo, substitua por data real
+                        backgroundColor: ['#3B82F6', '#EC4899', '#FCD34D'],
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false, // Permite que a altura seja controlada pelo container
+                    plugins: { legend: { position: 'right', labels: { color: '#F8FAFC' } } }
+                }
+            });
+        }
+
+        // Simula a chamada e inicialização do gráfico após o carregamento do script externo
+        document.addEventListener('DOMContentLoaded', () => {
+            // O ideal é que 'gestao_relatorio_estatistico.js' chame initCharts() com os dados reais.
+            // Chamando initCharts() aqui com dados MOCK para visualizar a estilização.
+            // Se seu arquivo JS externo já chama a função, remova a linha abaixo.
+            initCharts(); 
+
+            // Se o problema de "11 ocorrências, mas só 2 aparecem" persistir,
+            // o problema é na API que seu arquivo JS está chamando, e não no HTML/JS desta tela.
+            // Certifique-se de que a API '/api/relatorio_estatistico' está retornando todos os 11 registros.
+        });
+    </script>
+</head>
+<body class="bg-dark-primary text-text-light font-sans min-h-screen p-6">
+
+    <header class="text-center mb-8 mt-4">
+        <h1 class="text-2xl text-text-light mt-2 font-light border-b border-gray-700 pb-2 inline-block">
             SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR
         </h1><br>
-        <h2 class="text-xl font-light tracking-wider border-b border-gray-700 pb-2 inline-block">
+        <h2 class="text-lg text-text-light mt-2 font-light border-b border-gray-700 pb-2 inline-block">
             RELATÓRIO GERAL ESTATÍSTICO DE OCORRÊNCIAS
         </h2>
-
-        <!-- Botão voltar corrigido -->
+        
         <button onclick="window.location.href='/gestao_relatorio'"
-            class="mt-4 px-4 py-2 text-sm font-medium rounded-lg text-gray-300 border border-gray-600 hover:bg-gray-700 transition flex items-center mx-auto">
+            class="mt-4 px-4 py-2 text-sm font-medium rounded-lg text-gray-300 border border-gray-600 hover:bg-gray-700 transition duration-150 flex items-center mx-auto">
             <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path>
             </svg>
@@ -29,57 +103,54 @@
         </button>
     </header>
 
-    <!-- Mensagem de status -->
     <div id="mensagem-status" class="hidden text-center text-white px-4 py-2 rounded-lg my-4 mx-auto max-w-md"></div>
 
-    <!-- Cards -->
-    <section class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8 text-center">
-        <div class="bg-gray-800 p-4 rounded-xl shadow">
+    <section class="max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8 text-center">
+        <div class="bg-dark-secondary p-4 rounded-xl shadow">
             <h3 class="text-gray-400 text-sm mb-1">Total de Ocorrências</h3>
             <p id="total-ocorrencias" class="text-3xl font-bold text-indigo-400">0</p>
         </div>
-        <div class="bg-gray-800 p-4 rounded-xl shadow">
+        <div class="bg-dark-secondary p-4 rounded-xl shadow">
             <h3 class="text-gray-400 text-sm mb-1">Abertas</h3>
             <p id="abertas-ocorrencias" class="text-3xl font-bold text-yellow-400">0</p>
         </div>
-        <div class="bg-gray-800 p-4 rounded-xl shadow">
+        <div class="bg-dark-secondary p-4 rounded-xl shadow">
             <h3 class="text-gray-400 text-sm mb-1">Finalizadas</h3>
-            <p id="finalizadas-ocorrencias" class="text-3xl font-bold text-green-400">0</p>
+            <p id="finalizadas-ocorrencias" class="text-3xl font-bold text-accent">0</p>
         </div>
     </section>
 
-    <!-- Tabelas -->
-    <section class="space-y-8">
-        <div class="bg-gray-800 p-6 rounded-xl shadow">
+    <section class="max-w-7xl mx-auto space-y-8">
+        <div class="bg-dark-secondary p-6 rounded-xl shadow overflow-x-auto">
             <h3 class="text-lg font-semibold mb-3 border-b border-gray-700 pb-2">Resumo Geral</h3>
-            <table class="w-full text-left text-gray-300">
+            <table class="min-w-full text-left text-gray-300 text-sm">
                 <thead>
                     <tr class="text-gray-400 border-b border-gray-700">
-                        <th>Tipo</th><th>Número</th><th>%</th>
+                        <th class="p-2">Tipo</th><th class="p-2">Número</th><th class="p-2">%</th>
                     </tr>
                 </thead>
                 <tbody id="tabela-resumo-geral"></tbody>
             </table>
         </div>
 
-        <div class="bg-gray-800 p-6 rounded-xl shadow">
+        <div class="bg-dark-secondary p-6 rounded-xl shadow overflow-x-auto">
             <h3 class="text-lg font-semibold mb-3 border-b border-gray-700 pb-2">Ocorrências por Sala</h3>
-            <table class="w-full text-left text-gray-300">
+            <table class="min-w-full text-left text-gray-300 text-sm">
                 <thead>
                     <tr class="text-gray-400 border-b border-gray-700">
-                        <th>Sala</th><th>Total</th><th>%</th><th>&lt;7d</th><th>&gt;7d</th><th>Não Resp.</th>
+                        <th class="p-2">Sala</th><th class="p-2">Total</th><th class="p-2">%</th><th class="p-2">&lt;7d</th><th class="p-2">&gt;7d</th><th class="p-2">Não Resp.</th>
                     </tr>
                 </thead>
                 <tbody id="tabela-por-sala"></tbody>
             </table>
         </div>
 
-        <div class="bg-gray-800 p-6 rounded-xl shadow">
+        <div class="bg-dark-secondary p-6 rounded-xl shadow overflow-x-auto">
             <h3 class="text-lg font-semibold mb-3 border-b border-gray-700 pb-2">Ocorrências por Tutor</h3>
-            <table class="w-full text-left text-gray-300">
+            <table class="min-w-full text-left text-gray-300 text-sm">
                 <thead>
                     <tr class="text-gray-400 border-b border-gray-700">
-                        <th>Tutor</th><th>Total</th><th>Finalizadas</th><th>Abertas</th><th>Média Dias Resp.</th>
+                        <th class="p-2">Tutor</th><th class="p-2">Total</th><th class="p-2">Finalizadas</th><th class="p-2">Abertas</th><th class="p-2">Média Dias Resp.</th>
                     </tr>
                 </thead>
                 <tbody id="tabela-por-tutor"></tbody>
@@ -87,28 +158,31 @@
         </div>
     </section>
 
-    <!-- Gráficos -->
-    <section class="grid grid-cols-1 md:grid-cols-2 gap-8 mt-10">
-        <div class="bg-gray-800 p-6 rounded-xl shadow">
-            <h3 class="text-lg font-semibold mb-3 border-b border-gray-700 pb-2">Tempo de Resposta</h3>
-            <canvas id="chart-respostas" height="200"></canvas>
+    <section class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 mt-10">
+        <div class="bg-dark-secondary p-6 rounded-xl shadow flex flex-col items-center">
+            <h3 class="text-lg font-semibold mb-3 border-b border-gray-700 pb-2 w-full text-left">Tempo de Resposta</h3>
+            <div class="chart-container-small w-full max-w-sm" style="height: 250px;">
+                <canvas id="chart-respostas"></canvas>
+            </div>
         </div>
-        <div class="bg-gray-800 p-6 rounded-xl shadow">
-            <h3 class="text-lg font-semibold mb-3 border-b border-gray-700 pb-2">Ocorrências por Tutor</h3>
-            <canvas id="chart-tutor" height="200"></canvas>
+        
+        <div class="bg-dark-secondary p-6 rounded-xl shadow flex flex-col items-center">
+            <h3 class="text-lg font-semibold mb-3 border-b border-gray-700 pb-2 w-full text-left">Ocorrências por Tutor</h3>
+            <div class="chart-container-small w-full max-w-xs" style="height: 250px;">
+                <canvas id="chart-tutor"></canvas>
+            </div>
         </div>
     </section>
 
-    <!-- Script do relatório -->
     <script src="/static/js/gestao_relatorio_estatistico.js"></script>
 
-    <!-- Rodapé padrão -->
-    <footer class="footer mt-12">
-        <div class="container mx-auto text-center py-4 border-t border-gray-700">
-            <span class="text-gray-400">
-                Sistema de Gestão &copy; 2024 - Todos os direitos reservados
-            </span>
-        </div>
+    <footer class="w-full text-center mt-10 p-4 text-gray-400 text-sm border-t border-gray-800"> 
+        <p class="mb-1 text-base font-medium"> 
+            DESENVOLVEDOR: MARCELO ANDRÉ NOGUEIRA CARDES 
+        </p> 
+        <p class="text-xs font-light tracking-wide"> 
+            LICENCIADO: E.E. PEI PROFESSORA IRENE DIAS RIBEIRO 
+        </p> 
     </footer>
 </body>
 </html>
