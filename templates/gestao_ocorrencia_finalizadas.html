@@ -22,13 +22,17 @@ tailwind.config = {
   }
 };
 
+let ocorrenciasFinalizadas = []; // Armazena a lista completa de ocorrências
+
 document.addEventListener('DOMContentLoaded', () => {
-  carregarFiltros();
-  carregarOcorrencias();
+  carregarDadosEFiltros(); // Nova função para carregar dados e popular filtros
 
   // Auto filtragem — dispara sempre que o usuário muda um filtro
-  document.getElementById('filtro-sala').addEventListener('change', carregarOcorrencias);
-  document.getElementById('filtro-aluno').addEventListener('change', carregarOcorrencias);
+  document.getElementById('filtro-sala').addEventListener('change', () => {
+    popularFiltroAlunos(document.getElementById('filtro-sala').value); // 1. Filtra alunos
+    carregarOcorrencias(); // 2. Recarrega a tabela
+  });
+  document.getElementById('filtro-aluno').addEventListener('change', carregarOcorrencias); // 3. Recarrega a tabela
 });
 
 // Mostra mensagens simples no canto superior
@@ -42,38 +46,78 @@ function mostrarMensagem(texto, tipo = 'info') {
   setTimeout(()=> el.textContent = '', 3000);
 }
 
-// Carrega lista de salas e alunos
-async function carregarFiltros() {
+// 1. Nova função: Carrega a lista completa de ocorrências E popular os filtros
+async function carregarDadosEFiltros() {
+  mostrarMensagem('Carregando dados...', 'info');
   try {
-    const [rS, rA] = await Promise.all([fetch('/api/salas'), fetch('/api/alunos')]);
-    const salas = rS.ok ? await rS.json() : [];
-    const alunos = rA.ok ? await rA.json() : [];
+    // Usando a API original para buscar os dados de ocorrências finalizadas
+    const resp = await fetch('/api/ocorrencias_finalizadas'); 
+    if (!resp.ok) throw new Error('Falha ao buscar finalizadas');
+    ocorrenciasFinalizadas = await resp.json();
 
-    const selSala = document.getElementById('filtro-sala');
-    selSala.innerHTML = '<option value="">Todas as Salas</option>';
-    salas.forEach(s => {
-      const opt = document.createElement('option');
-      opt.value = s.nome || s.sala_nome || s.id;
-      opt.text = s.nome || s.sala_nome || `Sala ${s.id}`;
-      selSala.appendChild(opt);
-    });
-
-    const selAluno = document.getElementById('filtro-aluno');
-    selAluno.innerHTML = '<option value="">Todos os Alunos</option>';
-    alunos.forEach(a => {
-      const opt = document.createElement('option');
-      opt.value = a.nome || a.aluno_nome || a.id;
-      opt.text = a.nome || a.aluno_nome || `Aluno ${a.id}`;
-      selAluno.appendChild(opt);
-    });
+    popularFiltroSalas();
+    popularFiltroAlunos(); // Inicialmente, popula com todos os alunos
+    carregarOcorrencias(); // Carrega a tabela inicial
+    mostrarMensagem('Dados e filtros carregados', 'success');
 
   } catch (e) {
-    console.error('Erro filtros:', e);
-    mostrarMensagem('Falha ao carregar filtros', 'danger');
+    console.error('Erro ao carregar dados:', e);
+    mostrarMensagem('Falha ao carregar dados iniciais', 'danger');
+    const tabela = document.getElementById('ocorrencias-corpo');
+    tabela.innerHTML = '<tr><td colspan="6" class="py-6 text-center text-red-400">Erro ao carregar dados.</td></tr>';
   }
 }
 
-// Ícones de ação
+// 2. Popula o filtro de Salas usando a lista de ocorrências finalizadas
+function popularFiltroSalas() {
+  const selSala = document.getElementById('filtro-sala');
+  selSala.innerHTML = '<option value="">Todas as Salas</option>';
+  
+  // Extrai salas únicas das ocorrências finalizadas
+  const salasUnicas = new Set(ocorrenciasFinalizadas.map(occ => occ.sala_nome || occ.sala).filter(Boolean));
+  
+  salasUnicas.forEach(salaNome => {
+    const opt = document.createElement('option');
+    opt.value = salaNome;
+    opt.text = salaNome;
+    selSala.appendChild(opt);
+  });
+}
+
+// 3. Popula ou repopula o filtro de Alunos (encadeado)
+function popularFiltroAlunos(salaFiltro = '') {
+  const selAluno = document.getElementById('filtro-aluno');
+  const valorAtualAluno = selAluno.value; 
+  
+  selAluno.innerHTML = '<option value="">Todos os Alunos</option>';
+
+  // Filtra as ocorrências pela sala selecionada (se houver)
+  const ocorrenciasFiltradas = salaFiltro 
+    ? ocorrenciasFinalizadas.filter(occ => (occ.sala_nome || occ.sala) === salaFiltro) 
+    : ocorrenciasFinalizadas;
+
+  // Extrai alunos únicos das ocorrências filtradas
+  const alunosMap = new Map(); 
+  ocorrenciasFiltradas.forEach(occ => {
+    if (occ.aluno_nome) {
+      alunosMap.set(occ.aluno_nome, occ.aluno_nome);
+    }
+  });
+
+  alunosMap.forEach((nome, valor) => {
+    const opt = document.createElement('option');
+    opt.value = valor;
+    opt.text = nome;
+    selAluno.appendChild(opt);
+  });
+  
+  // Tenta manter a seleção do aluno anterior
+  if (valorAtualAluno && alunosMap.has(valorAtualAluno)) {
+     selAluno.value = valorAtualAluno;
+  }
+}
+
+// Ícones de ação (função inalterada)
 function renderizarAcoes(occ) {
   const numero = occ.numero;
   let html = `<div class="flex items-center space-x-2">
@@ -101,53 +145,53 @@ function renderizarAcoes(occ) {
   return html;
 }
 
-// Busca as ocorrências finalizadas
-async function carregarOcorrencias() {
-  mostrarMensagem('Carregando...', 'info');
+// 4. Busca e renderiza as ocorrências (agora usa a lista local `ocorrenciasFinalizadas` e os filtros)
+function carregarOcorrencias() {
   const tabela = document.getElementById('ocorrencias-corpo');
-  tabela.innerHTML = '<tr><td colspan="6" class="py-6 text-center text-gray-400">Carregando...</td></tr>';
+  tabela.innerHTML = '<tr><td colspan="6" class="py-6 text-center text-gray-400">Filtrando dados...</td></tr>';
 
-  const sala = encodeURIComponent(document.getElementById('filtro-sala').value || '');
-  const aluno = encodeURIComponent(document.getElementById('filtro-aluno').value || '');
-  let url = '/api/ocorrencias_finalizadas';
-  const params = [];
-  if (sala) params.push(`sala=${sala}`);
-  if (aluno) params.push(`aluno=${aluno}`);
-  if (params.length) url += '?' + params.join('&');
+  const filtroSala = document.getElementById('filtro-sala').value;
+  const filtroAluno = document.getElementById('filtro-aluno').value;
 
-  try {
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error('Falha ao buscar finalizadas');
-    const data = await resp.json();
-    if (!Array.isArray(data) || data.length === 0) {
-      tabela.innerHTML = '<tr><td colspan="6" class="py-6 text-center text-gray-400">Nenhuma ocorrência finalizada.</td></tr>';
-      return;
-    }
-    let html = '';
-    data.forEach(occ => {
-      html += `<tr class="hover:bg-dark-secondary/50">
-        <td class="p-3 text-sm font-medium text-text-light">${occ.numero}</td>
-        <td class="p-3 text-sm text-gray-300">${occ.aluno_nome || ''}</td>
-        <td class="p-3 text-sm text-gray-300">${occ.sala_nome || occ.sala || ''}</td>
-        <td class="p-3 text-sm text-gray-300">${occ.tutor_nome || ''}</td>
-        <td class="p-3 text-sm text-gray-300">${occ.status || ''}</td>
-        <td class="p-3 text-sm whitespace-nowrap">${renderizarAcoes(occ)}</td>
-      </tr>`;
-    });
-    tabela.innerHTML = html;
-    mostrarMensagem('Finalizadas carregadas', 'success');
-  } catch (e) {
-    console.error(e);
-    tabela.innerHTML = '<tr><td colspan="6" class="py-6 text-center text-red-400">Erro ao carregar.</td></tr>';
-    mostrarMensagem('Erro ao carregar finalizadas', 'danger');
+  // Filtra a lista local com base nos filtros selecionados
+  const dadosFiltrados = ocorrenciasFinalizadas.filter(occ => {
+    const salaCorrente = occ.sala_nome || occ.sala;
+    const alunoCorrente = occ.aluno_nome;
+    
+    // Filtro por Sala
+    const filtroSalaOk = !filtroSala || salaCorrente === filtroSala;
+    
+    // Filtro por Aluno
+    const filtroAlunoOk = !filtroAluno || alunoCorrente === filtroAluno;
+    
+    return filtroSalaOk && filtroAlunoOk;
+  });
+
+  if (dadosFiltrados.length === 0) {
+    tabela.innerHTML = '<tr><td colspan="6" class="py-6 text-center text-gray-400">Nenhuma ocorrência finalizada com estes filtros.</td></tr>';
+    mostrarMensagem('Filtros aplicados. Nenhuma ocorrência encontrada.', 'info');
+    return;
   }
+  
+  let html = '';
+  dadosFiltrados.forEach(occ => {
+    html += `<tr class="hover:bg-dark-secondary/50">
+      <td class="p-3 text-sm font-medium text-text-light">${occ.numero}</td>
+      <td class="p-3 text-sm text-gray-300">${occ.aluno_nome || ''}</td>
+      <td class="p-3 text-sm text-gray-300">${occ.sala_nome || occ.sala || ''}</td>
+      <td class="p-3 text-sm text-gray-300">${occ.tutor_nome || ''}</td>
+      <td class="p-3 text-sm text-gray-300">${occ.status || ''}</td>
+      <td class="p-3 text-sm whitespace-nowrap">${renderizarAcoes(occ)}</td>
+    </tr>`;
+  });
+  tabela.innerHTML = html;
+  mostrarMensagem(`Ocorrências carregadas: ${dadosFiltrados.length}`, 'success');
 }
 </script>
 </head>
 
 <body class="bg-dark-primary min-h-screen p-6 text-text-light">
 
-<!-- Cabeçalho Padronizado -->
 <header class="text-center mb-8 mt-4">
   <h1 class="text-2xl text-text-light mt-2 font-light border-b border-gray-700 pb-2 inline-block">
     SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR
@@ -167,10 +211,8 @@ async function carregarOcorrencias() {
   </button>
 </header>
 
-<!-- Mensagem de status -->
 <div id="mensagem-status" class="hidden fixed top-4 right-4 p-3 rounded z-50 text-text-light"></div>
 
-<!-- Conteúdo principal -->
 <main class="max-w-7xl mx-auto bg-dark-secondary p-6 rounded-lg shadow-2xl">
   <div class="flex flex-wrap justify-center gap-4 mb-4">
     <select id="filtro-sala" class="px-3 py-2 rounded bg-white text-black"></select>
@@ -196,7 +238,6 @@ async function carregarOcorrencias() {
   </div>
 </main>
 
-<!-- Rodapé Padronizado -->
 <footer class="w-full text-center mt-10 p-4 text-gray-400 text-sm border-t border-gray-800">
   <p class="mb-1 text-base font-medium">
     DESENVOLVEDOR: MARCELO ANDRÉ NOGUEIRA CARDES
