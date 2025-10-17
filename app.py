@@ -24,6 +24,10 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 app = Flask(__name__, template_folder='templates')
 
+@app.before_request
+def log_request():
+    print(f"[LOG] Rota acessada: {request.path}")
+
 
 # =========================================================
 # FUNÇÕES AUXILIARES
@@ -1807,6 +1811,7 @@ def gerar_pdf_ocorrencias():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
 
 
 
