@@ -82,8 +82,7 @@ DEFAULT_AUTOTEXT = "ATENDIMENTO NÃO SOLICITADO PELO RESPONSÁVEL DA OCORRÊNCIA
 
 @app.route('/')
 def home():
-    return render_template('home.html')
-    # return "Servidor Flask no Cloud Run OK!"
+    return render_template('home.html')  
 
 @app.route('/gestao_aulas')
 def gestao_aulas():
@@ -120,10 +119,6 @@ def gestao_ocorrencia_editar():
 @app.route('/gestao_ocorrencia_finalizadas')
 def gestao_ocorrencia_finalizadas():
     return render_template('gestao_ocorrencia_finalizadas.html')
-
-@app.route('/gestao_relatorio')
-def gestao_relatorio():
-    return render_template('gestao_relatorio.html')
 
 @app.route('/gestao_relatorio_estatistico')
 def gestao_relatorio_estatistico():
@@ -197,18 +192,6 @@ def gestao_tecnologia_historico():
 @app.route('/gestao_tecnologia_retirada')
 def gestao_tecnologia_retirada():
     return render_template('gestao_tecnologia_retirada.html')
-
-@app.route('/gestao_configuracoes')
-def gestao_configuracoes():
-    return render_template('gestao_configuracoes.html')
-
-@app.route('/gestao_configuracoes_fluxo')
-def gestao_configuracoes_fluxo():
-    return render_template('gestao_configuracoes_fluxo.html')
-
-@app.route('/gestao_configuracoes_sistema')
-def gestao_configuracoes_sistema():
-    return render_template('gestao_configuracoes_sistema.html')
 
 @app.route('/gestao_cadastro')
 def gestao_cadastro():
@@ -1824,6 +1807,7 @@ def gerar_pdf_ocorrencias():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
 
 
 
