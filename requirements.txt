@@ -4,4 +4,4 @@ python-dotenv
 gunicorn
 reportlab
 fpdf
-
+fpdf2
