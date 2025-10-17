@@ -82,8 +82,8 @@ DEFAULT_AUTOTEXT = "ATENDIMENTO NÃO SOLICITADO PELO RESPONSÁVEL DA OCORRÊNCIA
 
 @app.route('/')
 def home():
-    # Antes: return render_template('home.html')
-    return "Servidor Flask no Cloud Run OK!"
+    return render_template('home.html')
+    # return "Servidor Flask no Cloud Run OK!"
 
 @app.route('/gestao_aulas')
 def gestao_aulas():
@@ -1824,6 +1824,7 @@ def gerar_pdf_ocorrencias():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
 
 
 
