@@ -773,71 +773,71 @@ def registrar_atendimento(ocorrencia_id):
     try:
         data = request.get_json()
         if data is None:
-            # Caso o frontend não envie JSON válido ou envie corpo vazio
-            return jsonify({"error": "Corpo da requisição vazio ou JSON inválido. Verifique o Content-Type."}), 400
+            return jsonify({"error": "Corpo da requisição vazio ou JSON inválido."}), 400
 
         nivel = data.get("nivel")
         texto = data.get("texto")
         if not nivel or not texto:
-            return jsonify({"error": "Dados incompletos: Nível de atendimento ou texto não fornecidos."}), 400
-        
-        # Mapeamento dos campos de atendimento e data
+            return jsonify({"error": "Dados incompletos: Nível ou texto ausente."}), 400
+
         campos = {
+            "professor": ("atendimento_professor", "dt_atendimento_professor"),
             "tutor": ("atendimento_tutor", "dt_atendimento_tutor"),
             "coordenacao": ("atendimento_coordenacao", "dt_atendimento_coordenacao"),
             "gestao": ("atendimento_gestao", "dt_atendimento_gestao"),
         }
-        
+
         if nivel not in campos:
-            return jsonify({"error": "Nível de atendimento inválido."}), 400
-        
+            return jsonify({"error": f"Nível de atendimento inválido: {nivel}"}), 400
+
         campo_texto, campo_data = campos[nivel]
         agora = datetime.now().isoformat()
-        
-        # 1. Atualiza o atendimento e a data
+
         supabase.table("ocorrencias").update({
             campo_texto: texto,
             campo_data: agora
         }).eq("numero", ocorrencia_id).execute()
-        
-        # 2. Re-avalia o status da ocorrência
+
+        # Reavalia status
         resp = supabase.table('ocorrencias').select(
-            "solicitado_tutor, solicitado_coordenacao, solicitado_gestao, atendimento_tutor, atendimento_coordenacao, atendimento_gestao"
+            "solicitado_professor, solicitado_tutor, solicitado_coordenacao, solicitado_gestao, "
+            "atendimento_professor, atendimento_tutor, atendimento_coordenacao, atendimento_gestao"
         ).eq("numero", ocorrencia_id).single().execute()
-        
+
         if not resp.data:
-            return jsonify({"error": "Ocorrência não encontrada após atualização"}), 404
-            
+            return jsonify({"error": "Ocorrência não encontrada"}), 404
+
         occ = resp.data
-        
-        # Recalcula o status
+
+        sp = _to_bool(occ.get('solicitado_professor'))
         st = _to_bool(occ.get('solicitado_tutor'))
         sc = _to_bool(occ.get('solicitado_coordenacao'))
         sg = _to_bool(occ.get('solicitado_gestao'))
-        
+
+        at_prof = (occ.get('atendimento_professor') or "").strip()
         at_tutor = (occ.get('atendimento_tutor') or "").strip()
         at_coord = (occ.get('atendimento_coordenacao') or "").strip()
         at_gest = (occ.get('atendimento_gestao') or "").strip()
-        
-        # Se não foi solicitado, o campo deve ter o DEFAULT_AUTOTEXT (ou ser tratado como não pendente)
+
+        pendente_prof = sp and (at_prof == "" or at_prof == DEFAULT_AUTOTEXT)
         pendente_tutor = st and (at_tutor == "" or at_tutor == DEFAULT_AUTOTEXT)
         pendente_coord = sc and (at_coord == "" or at_coord == DEFAULT_AUTOTEXT)
         pendente_gestao = sg and (at_gest == "" or at_gest == DEFAULT_AUTOTEXT)
-        
+
         novo_status = "Aberta"
-        if not (pendente_tutor or pendente_coord or pendente_gestao):
+        if not (pendente_prof or pendente_tutor or pendente_coord or pendente_gestao):
             novo_status = "Finalizada"
 
-        # 3. Atualiza o status
         if novo_status == "Finalizada":
             supabase.table("ocorrencias").update({"status": novo_status}).eq("numero", ocorrencia_id).execute()
             logging.info(f"[ATENDIMENTO] Nº {ocorrencia_id} finalizada pelo nível {nivel}")
 
-        return jsonify({"success": True, "novo_status": novo_status})
+        return jsonify({"success": True, "novo_status": novo_status}), 200
 
     except Exception as e:
-        logging.exception(f"Erro ao registrar atendimento da ocorrência {ocorrencia_id}")
-        return jsonify({"error": f"Erro ao registrar atendimento: {str(e)}"}), 500
+        logging.exception(f"Erro ao registrar atendimento {ocorrencia_id}")
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route('/api/cadastrar_sala', methods=['POST'])
 def api_cadastrar_sala():
@@ -1701,3 +1701,4 @@ def api_relatorio_frequencia_detalhada():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
