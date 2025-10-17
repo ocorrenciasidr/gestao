@@ -1,188 +1,184 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Relatório Geral Estatístico de Ocorrências</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Relatório Geral Estatístico de Ocorrências</title>
 
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    <script>
-        // Configuração Tailwind para cores padronizadas
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        'dark-primary': '#0F172A',
-                        'dark-secondary': '#1E293B',
-                        'accent': '#10B981',
-                        'text-light': '#F8FAFC',
-                    }
-                }
-            }
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'dark-primary': '#0F172A',
+            'dark-secondary': '#1E293B',
+            'accent': '#10B981',
+            'text-light': '#F8FAFC',
+          }
+        }
+      }
+    };
+
+    async function carregarDadosRelatorio() {
+      try {
+        const resposta = await fetch('/api/relatorio_estatistico');
+        const data = await resposta.json();
+
+        console.log("📊 Dados recebidos:", data);
+        console.log("Total de registros:", data.length);
+
+        // Mostra mensagem no topo
+        const msg = document.getElementById('mensagem-status');
+        msg.classList.remove('hidden');
+        msg.textContent = `✅ ${data.length} registros carregados com sucesso.`;
+        msg.classList.add('bg-green-700');
+
+        // Exemplo: preencher contadores básicos
+        document.getElementById('total-ocorrencias').textContent = data.length;
+        document.getElementById('abertas-ocorrencias').textContent = data.filter(o => o.status === 'Aberta').length;
+        document.getElementById('finalizadas-ocorrencias').textContent = data.filter(o => o.status === 'Finalizada').length;
+
+        // Preencher gráficos
+        const resumoRespostas = {
+          labels: ['Rápida (<7d)', 'Lenta (>7d)', 'Não Respondida'],
+          datasets: [{
+            label: 'Tempo de Resposta',
+            data: [
+              data.filter(o => o.dias_resposta <= 7).length,
+              data.filter(o => o.dias_resposta > 7 && o.dias_resposta !== null).length,
+              data.filter(o => !o.dias_resposta).length
+            ],
+            backgroundColor: ['#10B981', '#F59E0B', '#EF4444'],
+            borderRadius: 6
+          }]
         };
 
-        // Função para inicializar gráficos com altura reduzida (height="200" no HTML é ignorado se não houver container limitante)
-        function initCharts(dataTutor, dataRespostas) {
-            // Se houver necessidade de mock data, use aqui, mas o ideal é que venha do arquivo JS externo.
-            // A altura será controlada pelo container div.chart-container-small
-            
-            // Gráfico 1: Tempo de Resposta
-            const ctxRespostas = document.getElementById('chart-respostas').getContext('2d');
-            new Chart(ctxRespostas, {
-                type: 'bar',
-                data: dataRespostas || {
-                    labels: ['Rápida (<7d)', 'Lenta (>7d)', 'Não Respondida'],
-                    datasets: [{
-                        label: 'Tempo de Resposta',
-                        data: [1, 2, 3], // Dados de exemplo, substitua por data real
-                        backgroundColor: ['#10B981', '#F59E0B', '#EF4444'],
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false, // Permite que a altura seja controlada pelo container
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' } },
-                        x: { grid: { color: 'rgba(255, 255, 255, 0.1)' } }
-                    }
-                }
-            });
+        const resumoTutor = (() => {
+          const agrupado = {};
+          data.forEach(o => {
+            const t = o.tutor || 'Sem Tutor';
+            agrupado[t] = (agrupado[t] || 0) + 1;
+          });
+          return {
+            labels: Object.keys(agrupado),
+            datasets: [{
+              label: 'Ocorrências',
+              data: Object.values(agrupado),
+              backgroundColor: ['#3B82F6', '#EC4899', '#FCD34D', '#8B5CF6', '#22D3EE', '#84CC16']
+            }]
+          };
+        })();
 
-            // Gráfico 2: Ocorrências por Tutor
-            const ctxTutor = document.getElementById('chart-tutor').getContext('2d');
-            new Chart(ctxTutor, {
-                type: 'doughnut',
-                data: dataTutor || {
-                    labels: ['Tutor A', 'Tutor B', 'Outros'],
-                    datasets: [{
-                        label: 'Ocorrências',
-                        data: [4, 5, 2], // Dados de exemplo, substitua por data real
-                        backgroundColor: ['#3B82F6', '#EC4899', '#FCD34D'],
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false, // Permite que a altura seja controlada pelo container
-                    plugins: { legend: { position: 'right', labels: { color: '#F8FAFC' } } }
-                }
-            });
+        initCharts(resumoTutor, resumoRespostas);
+      } catch (erro) {
+        console.error("❌ Erro ao carregar relatório:", erro);
+        const msg = document.getElementById('mensagem-status');
+        msg.classList.remove('hidden');
+        msg.textContent = "❌ Erro ao carregar os dados do relatório.";
+        msg.classList.add('bg-red-700');
+      }
+    }
+
+    function initCharts(dataTutor, dataRespostas) {
+      // Chart: Tempo de Resposta
+      const ctxRespostas = document.getElementById('chart-respostas').getContext('2d');
+      new Chart(ctxRespostas, {
+        type: 'bar',
+        data: dataRespostas,
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { color: '#F8FAFC' },
+              grid: { color: 'rgba(255, 255, 255, 0.1)' }
+            },
+            x: {
+              ticks: { color: '#F8FAFC' },
+              grid: { color: 'rgba(255, 255, 255, 0.1)' }
+            }
+          }
         }
+      });
 
-        // Simula a chamada e inicialização do gráfico após o carregamento do script externo
-        document.addEventListener('DOMContentLoaded', () => {
-            // O ideal é que 'gestao_relatorio_estatistico.js' chame initCharts() com os dados reais.
-            // Chamando initCharts() aqui com dados MOCK para visualizar a estilização.
-            // Se seu arquivo JS externo já chama a função, remova a linha abaixo.
-            initCharts(); 
+      // Chart: Ocorrências por Tutor
+      const ctxTutor = document.getElementById('chart-tutor').getContext('2d');
+      new Chart(ctxTutor, {
+        type: 'doughnut',
+        data: dataTutor,
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '65%',
+          plugins: {
+            legend: { position: 'bottom', labels: { color: '#F8FAFC', padding: 10 } }
+          }
+        }
+      });
+    }
 
-            // Se o problema de "11 ocorrências, mas só 2 aparecem" persistir,
-            // o problema é na API que seu arquivo JS está chamando, e não no HTML/JS desta tela.
-            // Certifique-se de que a API '/api/relatorio_estatistico' está retornando todos os 11 registros.
-        });
-    </script>
+    document.addEventListener('DOMContentLoaded', carregarDadosRelatorio);
+  </script>
 </head>
+
 <body class="bg-dark-primary text-text-light font-sans min-h-screen p-6">
 
-    <header class="text-center mb-8 mt-4">
-        <h1 class="text-2xl text-text-light mt-2 font-light border-b border-gray-700 pb-2 inline-block">
-            SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR
-        </h1><br>
-        <h2 class="text-lg text-text-light mt-2 font-light border-b border-gray-700 pb-2 inline-block">
-            RELATÓRIO GERAL ESTATÍSTICO DE OCORRÊNCIAS
-        </h2>
-        
-        <button onclick="window.location.href='/gestao_relatorio'"
-            class="mt-4 px-4 py-2 text-sm font-medium rounded-lg text-gray-300 border border-gray-600 hover:bg-gray-700 transition duration-150 flex items-center mx-auto">
-            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path>
-            </svg>
-            Voltar ao Menu Relatórios
-        </button>
-    </header>
+  <header class="text-center mb-10">
+    <h1 class="text-2xl font-light border-b border-gray-700 pb-2 inline-block">
+      SISTEMA DE GESTÃO DE CONVIVÊNCIA ESCOLAR
+    </h1><br>
+    <h2 class="text-lg font-light border-b border-gray-700 pb-2 inline-block">
+      RELATÓRIO GERAL ESTATÍSTICO DE OCORRÊNCIAS
+    </h2>
+    <button onclick="window.location.href='/gestao_relatorio'"
+      class="mt-4 px-5 py-2 text-sm font-medium rounded-lg text-gray-300 border border-gray-600 hover:bg-gray-700 transition duration-150 flex items-center mx-auto">
+      <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path>
+      </svg>
+      Voltar ao Menu Relatórios
+    </button>
+  </header>
 
-    <div id="mensagem-status" class="hidden text-center text-white px-4 py-2 rounded-lg my-4 mx-auto max-w-md"></div>
+  <div id="mensagem-status" class="hidden text-center text-white px-4 py-2 rounded-lg my-4 mx-auto max-w-md"></div>
 
-    <section class="max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8 text-center">
-        <div class="bg-dark-secondary p-4 rounded-xl shadow">
-            <h3 class="text-gray-400 text-sm mb-1">Total de Ocorrências</h3>
-            <p id="total-ocorrencias" class="text-3xl font-bold text-indigo-400">0</p>
-        </div>
-        <div class="bg-dark-secondary p-4 rounded-xl shadow">
-            <h3 class="text-gray-400 text-sm mb-1">Abertas</h3>
-            <p id="abertas-ocorrencias" class="text-3xl font-bold text-yellow-400">0</p>
-        </div>
-        <div class="bg-dark-secondary p-4 rounded-xl shadow">
-            <h3 class="text-gray-400 text-sm mb-1">Finalizadas</h3>
-            <p id="finalizadas-ocorrencias" class="text-3xl font-bold text-accent">0</p>
-        </div>
-    </section>
+  <section class="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-6 mb-10 text-center">
+    <div class="bg-dark-secondary p-6 rounded-2xl shadow-lg">
+      <h3 class="text-gray-400 text-sm mb-2">Total de Ocorrências</h3>
+      <p id="total-ocorrencias" class="text-3xl font-bold text-indigo-400">0</p>
+    </div>
+    <div class="bg-dark-secondary p-6 rounded-2xl shadow-lg">
+      <h3 class="text-gray-400 text-sm mb-2">Abertas</h3>
+      <p id="abertas-ocorrencias" class="text-3xl font-bold text-yellow-400">0</p>
+    </div>
+    <div class="bg-dark-secondary p-6 rounded-2xl shadow-lg">
+      <h3 class="text-gray-400 text-sm mb-2">Finalizadas</h3>
+      <p id="finalizadas-ocorrencias" class="text-3xl font-bold text-accent">0</p>
+    </div>
+  </section>
 
-    <section class="max-w-7xl mx-auto space-y-8">
-        <div class="bg-dark-secondary p-6 rounded-xl shadow overflow-x-auto">
-            <h3 class="text-lg font-semibold mb-3 border-b border-gray-700 pb-2">Resumo Geral</h3>
-            <table class="min-w-full text-left text-gray-300 text-sm">
-                <thead>
-                    <tr class="text-gray-400 border-b border-gray-700">
-                        <th class="p-2">Tipo</th><th class="p-2">Número</th><th class="p-2">%</th>
-                    </tr>
-                </thead>
-                <tbody id="tabela-resumo-geral"></tbody>
-            </table>
-        </div>
+  <section class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 mt-10">
+    <div class="bg-dark-secondary p-6 rounded-2xl shadow-lg flex flex-col items-center">
+      <h3 class="text-lg font-semibold mb-3 border-b border-gray-700 pb-2 w-full text-left">Tempo de Resposta</h3>
+      <div class="w-full max-w-sm" style="height: 220px;">
+        <canvas id="chart-respostas"></canvas>
+      </div>
+    </div>
+    <div class="bg-dark-secondary p-6 rounded-2xl shadow-lg flex flex-col items-center">
+      <h3 class="text-lg font-semibold mb-3 border-b border-gray-700 pb-2 w-full text-left">Ocorrências por Tutor</h3>
+      <div class="w-full max-w-sm" style="height: 220px;">
+        <canvas id="chart-tutor"></canvas>
+      </div>
+    </div>
+  </section>
 
-        <div class="bg-dark-secondary p-6 rounded-xl shadow overflow-x-auto">
-            <h3 class="text-lg font-semibold mb-3 border-b border-gray-700 pb-2">Ocorrências por Sala</h3>
-            <table class="min-w-full text-left text-gray-300 text-sm">
-                <thead>
-                    <tr class="text-gray-400 border-b border-gray-700">
-                        <th class="p-2">Sala</th><th class="p-2">Total</th><th class="p-2">%</th><th class="p-2">&lt;7d</th><th class="p-2">&gt;7d</th><th class="p-2">Não Resp.</th>
-                    </tr>
-                </thead>
-                <tbody id="tabela-por-sala"></tbody>
-            </table>
-        </div>
-
-        <div class="bg-dark-secondary p-6 rounded-xl shadow overflow-x-auto">
-            <h3 class="text-lg font-semibold mb-3 border-b border-gray-700 pb-2">Ocorrências por Tutor</h3>
-            <table class="min-w-full text-left text-gray-300 text-sm">
-                <thead>
-                    <tr class="text-gray-400 border-b border-gray-700">
-                        <th class="p-2">Tutor</th><th class="p-2">Total</th><th class="p-2">Finalizadas</th><th class="p-2">Abertas</th><th class="p-2">Média Dias Resp.</th>
-                    </tr>
-                </thead>
-                <tbody id="tabela-por-tutor"></tbody>
-            </table>
-        </div>
-    </section>
-
-    <section class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 mt-10">
-        <div class="bg-dark-secondary p-6 rounded-xl shadow flex flex-col items-center">
-            <h3 class="text-lg font-semibold mb-3 border-b border-gray-700 pb-2 w-full text-left">Tempo de Resposta</h3>
-            <div class="chart-container-small w-full max-w-sm" style="height: 250px;">
-                <canvas id="chart-respostas"></canvas>
-            </div>
-        </div>
-        
-        <div class="bg-dark-secondary p-6 rounded-xl shadow flex flex-col items-center">
-            <h3 class="text-lg font-semibold mb-3 border-b border-gray-700 pb-2 w-full text-left">Ocorrências por Tutor</h3>
-            <div class="chart-container-small w-full max-w-xs" style="height: 250px;">
-                <canvas id="chart-tutor"></canvas>
-            </div>
-        </div>
-    </section>
-
-    <script src="/static/js/gestao_relatorio_estatistico.js"></script>
-
-    <footer class="w-full text-center mt-10 p-4 text-gray-400 text-sm border-t border-gray-800"> 
-        <p class="mb-1 text-base font-medium"> 
-            DESENVOLVEDOR: MARCELO ANDRÉ NOGUEIRA CARDES 
-        </p> 
-        <p class="text-xs font-light tracking-wide"> 
-            LICENCIADO: E.E. PEI PROFESSORA IRENE DIAS RIBEIRO 
-        </p> 
-    </footer>
+  <footer class="w-full text-center mt-12 p-4 text-gray-400 text-sm border-t border-gray-800">
+    <p class="mb-1 text-base font-medium">DESENVOLVEDOR: MARCELO ANDRÉ NOGUEIRA CARDES</p>
+    <p class="text-xs font-light tracking-wide">LICENCIADO: E.E. PEI PROFESSORA IRENE DIAS RIBEIRO</p>
+  </footer>
 </body>
 </html>
